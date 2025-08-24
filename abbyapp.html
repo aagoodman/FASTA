@@ -5,24 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <title>Speed-Color Map (Prototype)</title>
   <meta name="theme-color" content="#111111">
+  <!-- Tiny inline manifest so iOS can Add to Home Screen nicely -->
   <link rel="manifest" href="data:application/manifest+json,{&quot;name&quot;:&quot;Speed-Color Map&quot;,&quot;short_name&quot;:&quot;SpeedMap&quot;,&quot;start_url&quot;:&quot;.&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;#111111&quot;,&quot;theme_color&quot;:&quot;#111111&quot;}">
   <link rel="preconnect" href="https://unpkg.com">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
-    :root { --bg: #0b0b0c; --fg: #f5f5f7; --muted:#a3a3a3; --btn:#222; --btnb:#2c2c2c; --accent:#4ade80; }
-    html,body,#app { height: 100%; margin:0; background: var(--bg); color:var(--fg); font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;}
-    #map { position: absolute; inset: 0; }
-    #ui { position: fixed; top: env(safe-area-inset-top); left: 0; right: 0; display: flex; gap: 8px; padding: 10px 12px; background: linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0)); z-index: 1000; align-items: center; flex-wrap: wrap; }
-    .pill { display:inline-flex; align-items:center; gap:8px; border-radius: 999px; background: rgba(17,17,17,.7); padding: 8px 12px; backdrop-filter: blur(8px); border:1px solid rgba(255,255,255,.08); }
+    :root { --bg:#0b0b0c; --fg:#f5f5f7; --muted:#a3a3a3; --btn:#222; --btnb:#2c2c2c; --accent:#4ade80; }
+    html,body,#app { height:100%; margin:0; background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+    #map { position:absolute; inset:0; }
+    #ui { position:fixed; top:env(safe-area-inset-top); left:0; right:0; display:flex; gap:8px; padding:10px 12px; background:linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0)); z-index:1000; align-items:center; flex-wrap:wrap; }
+    .pill { display:inline-flex; align-items:center; gap:8px; border-radius:999px; background:rgba(17,17,17,.7); padding:8px 12px; backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08); }
     .btn { appearance:none; border:1px solid #333; background:var(--btn); color:var(--fg); border-radius:999px; padding:8px 12px; font-weight:600; }
-    .btn:active { transform: translateY(1px); }
+    .btn:active { transform:translateY(1px); }
     .btn.primary { background:#14532d; border-color:#1f7a47;}
     .btn.warn { background:#7a1f1f; border-color:#a33; }
-    .metric { font-variant-numeric: tabular-nums; }
-    #legend { position: fixed; bottom: 16px; left: 16px; background: rgba(17,17,17,.7); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; backdrop-filter: blur(8px); z-index:1000;}
+    .metric { font-variant-numeric:tabular-nums; }
+    #legend { position:fixed; bottom:16px; left:16px; background:rgba(17,17,17,.7); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; backdrop-filter:blur(8px); z-index:1000;}
     #legend .row { display:flex; align-items:center; gap:8px; margin:.25rem 0; }
     .swatch { width:18px; height:8px; border-radius:4px; }
-    #toast { position: fixed; bottom: 18px; left:50%; transform: translateX(-50%); background:#222; border:1px solid #333; color:#fff; padding:10px 14px; border-radius:12px; display:none; z-index:2000; }
+    #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#222; border:1px solid #333; color:#fff; padding:10px 14px; border-radius:12px; display:none; z-index:2000; }
   </style>
 </head>
 <body>
@@ -65,9 +66,15 @@
 <script>
 (function(){
   const map = L.map('map', { zoomControl: false });
-  const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, attribution: '&copy; OpenStreetMap' });
+  const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 20,
+    attribution: '&copy; OpenStreetMap'
+  });
   tiles.addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  // Show a world view immediately; we’ll recenter when we get GPS
+  map.setView([20, 0], 2);
 
   const startBtn = document.getElementById('startBtn');
   const stopBtn  = document.getElementById('stopBtn');
@@ -84,13 +91,16 @@
   let points = []; // {t, lat, lon, speed, acc}
   const layerGroup = L.layerGroup().addTo(map);
 
-  function showToast(msg, ms=2000){
+  // Optional: show current position as a small accuracy circle
+  let posMarker = null, accCircle = null;
+
+  function showToast(msg, ms=2600){
     toastEl.textContent = msg;
     toastEl.style.display = 'block';
     setTimeout(()=> toastEl.style.display='none', ms);
   }
 
-  function toRad(d){ return d*Math.PI/180; }
+  const toRad = d => d*Math.PI/180;
   function haversine(a,b){
     const R=6371000;
     const dLat=toRad(b.lat-a.lat), dLon=toRad(b.lon-a.lon);
@@ -113,6 +123,16 @@
       case 'mph': return (v*2.236936).toFixed(1);
       case 'kn':  return (v*1.943844).toFixed(1);
       default:    return v.toFixed(1);
+    }
+  }
+
+  function placePosition(lat, lon, acc){
+    if (!posMarker) {
+      posMarker = L.circleMarker([lat, lon], { radius: 6, color:'#fff', weight:2, fillColor:'#4ade80', fillOpacity:0.9 }).addTo(layerGroup);
+      accCircle = L.circle([lat, lon], { radius: acc ?? 15, color:'#999', weight:1, opacity:0.5, fillOpacity:0.05 }).addTo(layerGroup);
+    } else {
+      posMarker.setLatLng([lat, lon]);
+      accCircle.setLatLng([lat, lon]).setRadius(acc ?? 15);
     }
   }
 
@@ -141,21 +161,28 @@
     last = null;
     points = [];
     layerGroup.clearLayers();
+    posMarker = null; accCircle = null;
     speedEl.textContent = '—';
+    // keep map view
   }
 
   function onPos(pos){
     const { latitude, longitude, speed, accuracy } = pos.coords;
     const t = pos.timestamp;
     const curr = {lat: latitude, lon: longitude, t};
+
+    placePosition(latitude, longitude, accuracy);
+
     if (!last) {
       map.setView([latitude, longitude], 16);
       last = curr;
       points.push({t, lat: latitude, lon: longitude, speed: Math.max(speed??-1, -1), acc: accuracy});
       return;
     }
+
     let v = (speed!=null && speed>=0) ? speed : haversine(last, curr) / ((t - last.t)/1000);
     if (!isFinite(v) || v < 0) v = 0;
+
     speedEl.textContent = formatSpeed(v, unitsSel.value);
     unitEl.textContent  = unitsSel.options[unitsSel.selectedIndex].text;
 
@@ -167,7 +194,12 @@
 
   function onErr(err){
     console.error(err);
-    showToast(err.message || 'Location error');
+    const msg = err && err.message ? err.message : 'Location error';
+    showToast(msg);
+    // Helpful tip if blocked/denied on iOS
+    if (err && (err.code === 1 || /denied/i.test(msg))) {
+      showToast('Enable Location: aA ▸ Website Settings ▸ Location ▸ Allow');
+    }
   }
 
   function download(filename, content, type='text/plain'){
@@ -207,10 +239,31 @@
   exportGpxBtn.addEventListener('click', ()=> download('track.gpx', toGPX(points), 'application/gpx+xml'));
   unitsSel.addEventListener('change', ()=>{});
 
+  // --- NEW: Ask for location on load, and auto-start if allowed ---
   if (navigator.permissions && navigator.permissions.query) {
-    navigator.permissions.query({name:'geolocation'}).then(p => {
-      if (p.state === 'granted') start();
-    }).catch(()=>{});
+    navigator.permissions.query({ name:'geolocation' }).then(p => {
+      if (p.state === 'granted') {
+        start();
+      } else if (p.state === 'prompt') {
+        // Trigger the browser prompt once; if it succeeds, begin tracking
+        navigator.geolocation.getCurrentPosition(
+          () => start(),
+          onErr,
+          { enableHighAccuracy:true, timeout:15000, maximumAge:0 }
+        );
+      } else {
+        // denied: show hint; user can change per-site settings and hit Start
+        showToast('Location is blocked. Tap aA ▸ Website Settings ▸ Location ▸ Allow');
+      }
+    }).catch(() => {
+      // Fallback if Permissions API not available: still try once to prompt
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(() => start(), onErr, { enableHighAccuracy:true });
+      }
+    });
+  } else if (navigator.geolocation) {
+    // Older browsers: try once to prompt
+    navigator.geolocation.getCurrentPosition(() => start(), onErr, { enableHighAccuracy:true });
   }
 })();
 </script>
