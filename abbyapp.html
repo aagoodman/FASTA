@@ -2,33 +2,49 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <title>Speed-Color Map (Prototype)</title>
   <meta name="theme-color" content="#111111">
-  <!-- Tiny inline manifest so iOS can Add to Home Screen nicely -->
-  <link rel="manifest" href="data:application/manifest+json,{&quot;name&quot;:&quot;Speed-Color Map&quot;,&quot;short_name&quot;:&quot;SpeedMap&quot;,&quot;start_url&quot;:&quot;.&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;#111111&quot;,&quot;theme_color&quot;:&quot;#111111&quot;}">
+
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+
+  <!-- Leaflet -->
   <link rel="preconnect" href="https://unpkg.com">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
   <style>
-    :root { --bg:#0b0b0c; --fg:#f5f5f7; --muted:#a3a3a3; --btn:#222; --btnb:#2c2c2c; --accent:#4ade80; }
-    html,body,#app { height:100%; margin:0; background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+    :root { --bg:#0b0b0c; --fg:#f5f5f7; --muted:#a3a3a3; --btn:#222; --accent:#4ade80; }
+    html,body,#app { height:100%; margin:0; background:var(--bg); color:var(--fg);
+      font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
     #map { position:absolute; inset:0; }
-    #ui { position:fixed; top:env(safe-area-inset-top); left:0; right:0; display:flex; gap:8px; padding:10px 12px; background:linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0)); z-index:1000; align-items:center; flex-wrap:wrap; }
-    .pill { display:inline-flex; align-items:center; gap:8px; border-radius:999px; background:rgba(17,17,17,.7); padding:8px 12px; backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08); }
-    .btn { appearance:none; border:1px solid #333; background:var(--btn); color:var(--fg); border-radius:999px; padding:8px 12px; font-weight:600; }
+    #ui { position:fixed; top:env(safe-area-inset-top); left:0; right:0; display:flex; gap:8px;
+      padding:10px 12px; background:linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0));
+      z-index:1000; align-items:center; flex-wrap:wrap; }
+    .pill { display:inline-flex; align-items:center; gap:8px; border-radius:999px; background:rgba(17,17,17,.7);
+      padding:8px 12px; backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08); }
+    .btn { appearance:none; border:1px solid #333; background:var(--btn); color:var(--fg);
+      border-radius:999px; padding:8px 12px; font-weight:600; }
     .btn:active { transform:translateY(1px); }
     .btn.primary { background:#14532d; border-color:#1f7a47;}
     .btn.warn { background:#7a1f1f; border-color:#a33; }
     .metric { font-variant-numeric:tabular-nums; }
-    #legend { position:fixed; bottom:16px; left:16px; background:rgba(17,17,17,.7); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; backdrop-filter:blur(8px); z-index:1000;}
+    #legend { position:fixed; bottom:16px; left:16px; background:rgba(17,17,17,.7);
+      border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; backdrop-filter:blur(8px); z-index:1000;}
     #legend .row { display:flex; align-items:center; gap:8px; margin:.25rem 0; }
     .swatch { width:18px; height:8px; border-radius:4px; }
-    #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#222; border:1px solid #333; color:#fff; padding:10px 14px; border-radius:12px; display:none; z-index:2000; }
+    #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#222; border:1px solid #333;
+      color:#fff; padding:10px 14px; border-radius:12px; display:none; z-index:2000; }
+    #build { position:fixed; right:8px; bottom:8px; font:12px/1.2 -apple-system,system-ui; opacity:.6; }
   </style>
 </head>
 <body>
 <div id="app">
   <div id="map"></div>
+
   <div id="ui">
     <div class="pill">
       <button id="startBtn" class="btn primary">Start</button>
@@ -52,6 +68,7 @@
       </select>
     </div>
   </div>
+
   <div id="legend">
     <div><strong>Color scale</strong> (by speed)</div>
     <div class="row"><span class="swatch" style="background:#3b82f6;"></span> <span class="metric">&lt; 2 m/s (walk)</span></div>
@@ -59,12 +76,15 @@
     <div class="row"><span class="swatch" style="background:#f59e0b;"></span> <span class="metric">8–22 m/s (city drive)</span></div>
     <div class="row"><span class="swatch" style="background:#ef4444;"></span> <span class="metric">&gt; 22 m/s (highway/train)</span></div>
   </div>
+
   <div id="toast"></div>
+  <div id="build">FASTA build v3</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function(){
+  // Map -------------------------------------------------------------
   const map = L.map('map', { zoomControl: false });
   const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 20,
@@ -72,10 +92,9 @@
   });
   tiles.addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
+  map.setView([20, 0], 2); // show something immediately
 
-  // Show a world view immediately; we’ll recenter when we get GPS
-  map.setView([20, 0], 2);
-
+  // UI --------------------------------------------------------------
   const startBtn = document.getElementById('startBtn');
   const stopBtn  = document.getElementById('stopBtn');
   const resetBtn = document.getElementById('resetBtn');
@@ -90,8 +109,6 @@
   let last = null;
   let points = []; // {t, lat, lon, speed, acc}
   const layerGroup = L.layerGroup().addTo(map);
-
-  // Optional: show current position as a small accuracy circle
   let posMarker = null, accCircle = null;
 
   function showToast(msg, ms=2600){
@@ -163,11 +180,17 @@
     layerGroup.clearLayers();
     posMarker = null; accCircle = null;
     speedEl.textContent = '—';
-    // keep map view
   }
 
   function onPos(pos){
     const { latitude, longitude, speed, accuracy } = pos.coords;
+
+    // Ignore extremely coarse fixes (e.g., IP-based multi-km)
+    if (accuracy != null && accuracy > 5000) {
+      console.warn('Skipping coarse fix with accuracy', accuracy, 'm');
+      return;
+    }
+
     const t = pos.timestamp;
     const curr = {lat: latitude, lon: longitude, t};
 
@@ -196,9 +219,8 @@
     console.error(err);
     const msg = err && err.message ? err.message : 'Location error';
     showToast(msg);
-    // Helpful tip if blocked/denied on iOS
     if (err && (err.code === 1 || /denied/i.test(msg))) {
-      showToast('Enable Location: aA ▸ Website Settings ▸ Location ▸ Allow');
+      showToast('Enable Location: aA ▸ Website Settings ▸ Location ▸ Allow (and Precise ON)');
     }
   }
 
@@ -239,31 +261,55 @@
   exportGpxBtn.addEventListener('click', ()=> download('track.gpx', toGPX(points), 'application/gpx+xml'));
   unitsSel.addEventListener('change', ()=>{});
 
-  // --- NEW: Ask for location on load, and auto-start if allowed ---
-  if (navigator.permissions && navigator.permissions.query) {
-    navigator.permissions.query({ name:'geolocation' }).then(p => {
-      if (p.state === 'granted') {
-        start();
-      } else if (p.state === 'prompt') {
-        // Trigger the browser prompt once; if it succeeds, begin tracking
+  // --- Precise-first flow on load: request permission, aim for <100 m, then start watch ---
+  async function getPreciseFix({targetAcc=100, maxWaitMs=20000} = {}){
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+      let best = null;
+      const t0 = Date.now();
+      const tryOnce = () => {
         navigator.geolocation.getCurrentPosition(
-          () => start(),
-          onErr,
-          { enableHighAccuracy:true, timeout:15000, maximumAge:0 }
+          pos => {
+            const acc = pos.coords.accuracy ?? Infinity;
+            if (!best || acc < (best.coords.accuracy ?? Infinity)) best = pos;
+            if (acc <= targetAcc) return resolve(pos);
+            if (Date.now() - t0 < maxWaitMs) setTimeout(tryOnce, 1000);
+            else resolve(best);
+          },
+          err => {
+            if (Date.now() - t0 < maxWaitMs) setTimeout(tryOnce, 1000);
+            else reject(err);
+          },
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
         );
-      } else {
-        // denied: show hint; user can change per-site settings and hit Start
-        showToast('Location is blocked. Tap aA ▸ Website Settings ▸ Location ▸ Allow');
-      }
-    }).catch(() => {
-      // Fallback if Permissions API not available: still try once to prompt
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(() => start(), onErr, { enableHighAccuracy:true });
-      }
+      };
+      tryOnce();
     });
-  } else if (navigator.geolocation) {
-    // Older browsers: try once to prompt
-    navigator.geolocation.getCurrentPosition(() => start(), onErr, { enableHighAccuracy:true });
+  }
+
+  (async () => {
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const p = await navigator.permissions.query({ name: 'geolocation' });
+          if (p.state === 'denied') {
+            showToast('Location blocked: aA ▸ Website Settings ▸ Location ▸ Allow (Precise ON)');
+          }
+        } catch {}
+      }
+      const first = await getPreciseFix({ targetAcc: 100, maxWaitMs: 20000 });
+      onPos(first);  // center + marker immediately from good fix
+      start();       // then begin continuous tracking
+    } catch (err) {
+      onErr(err);
+    }
+  })();
+
+  // Register service worker for PWA
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js').catch(console.warn);
+    });
   }
 })();
 </script>
