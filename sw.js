@@ -1,4 +1,4 @@
-const CACHE = "fasta-v2";   // <- bump this
+const CACHE = "fasta-v8";   // <- bump this
 const ASSETS = [
   "./",
   "./index.html",
