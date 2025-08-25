@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <title>Speed-Color Map (mph, compact)</title>
+  <title>Speed-Color Map (mph, clean)</title>
   <meta name="theme-color" content="#111111" />
   <link rel="preconnect" href="https://unpkg.com">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
-    :root { --bg:#0b0b0c; --fg:#f5f5f7; --btn:#222; --muted:#a3a3a3; }
+    :root { --bg:#0b0b0c; --fg:#f5f5f7; --btn:#1b1b1b; --muted:#a3a3a3; }
     html,body,#app { height:100%; margin:0; background:var(--bg); color:var(--fg);
       font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
     #map { position:absolute; inset:0; }
@@ -22,12 +22,13 @@
     .pill { display:inline-flex; align-items:center; gap:8px; border-radius:999px;
       background:rgba(17,17,17,.7); padding:8px 12px; backdrop-filter:blur(8px);
       border:1px solid rgba(255,255,255,.08); }
-    .btn, select.btn { appearance:none; border:1px solid #333; background:var(--btn); color:var(--fg);
+    .btn { appearance:none; border:1px solid #333; background:var(--btn); color:var(--fg);
       border-radius:999px; padding:8px 12px; font-weight:600; cursor:pointer; }
     .btn:active { transform:translateY(1px); }
     .btn.primary { background:#14532d; border-color:#1f7a47;}
     .btn.warn { background:#7a1f1f; border-color:#a33; }
     .metric { font-variant-numeric:tabular-nums; }
+    .muted { color: var(--muted); }
 
     /* Legend bottom-left */
     #legend { position:fixed; bottom:16px; left:16px; background:rgba(17,17,17,.7);
@@ -35,18 +36,35 @@
     #legend .row { display:flex; align-items:center; gap:8px; margin:.25rem 0; }
     .swatch { width:24px; height:10px; border-radius:4px; }
 
-    /* Palette bottom-right */
-    #ui-bottom-right { position:fixed; right:16px; bottom:16px; z-index:1000; }
-
-    /* Download popover (top-right area by icon) */
-    #exportWrap { position:relative; }
-    #exportBtn { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px;
-      border-radius:999px; border:1px solid #333; background:var(--btn); cursor:pointer; }
-    #exportMenu { position:absolute; top:42px; right:0; background:#151515; border:1px solid #333; border-radius:12px;
-      padding:8px; display:none; min-width:140px; z-index:1200; }
+    /* Export icon (top-right, light + tight) */
+    #exportIconWrap { position:fixed; top:calc(env(safe-area-inset-top) + 10px); right:12px; z-index:1200; }
+    #exportBtn { width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,0.9); border:1px solid #d9d9df; border-radius:8px; cursor:pointer; }
+    #exportBtn:hover { background:#ffffff; }
+    #exportBtn svg { width:18px; height:18px; color:#2b2b30; }
+    #exportMenu { position:absolute; top:34px; right:0; background:#151515; border:1px solid #333; border-radius:10px;
+      padding:6px; display:none; min-width:140px; }
     #exportMenu button { width:100%; text-align:left; border:none; background:transparent; color:var(--fg);
       padding:8px 10px; border-radius:8px; cursor:pointer; }
     #exportMenu button:hover { background:#222; }
+
+    /* Color wheel button (floating, not over zoom) */
+    #colorBtn { position:fixed; right:16px; bottom:88px; z-index:1100; width:36px; height:36px;
+      border-radius:999px; border:1px solid rgba(255,255,255,.15); cursor:pointer;
+      background: conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+      box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+
+    /* Palette modal */
+    #modalOverlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; z-index:1300; }
+    #modal { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+      background:#16161a; color:#fff; border:1px solid #2a2a31; border-radius:14px; width:min(92vw,420px); padding:14px; }
+    #modal h3 { margin:6px 6px 10px; font-size:16px; }
+    .palette-row { display:flex; align-items:center; gap:10px; padding:8px; border-radius:10px; cursor:pointer; }
+    .palette-row:hover { background:#1f1f25; }
+    .swatches { display:flex; gap:4px; }
+    .swatches span { width:20px; height:10px; border-radius:3px; display:inline-block; }
+    .modal-actions { display:flex; justify-content:flex-end; gap:8px; padding-top:8px; }
+    .small { padding:6px 10px; border-radius:8px; border:1px solid #333; background:#202026; color:#fff; cursor:pointer; }
 
     /* Toast + build */
     #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
@@ -54,14 +72,13 @@
     #build { position:fixed; right:8px; bottom:8px; font:12px/1.2 -apple-system,system-ui; opacity:.6; }
 
     /* Running indicator: subtle pulsing dot */
-    .dot { width:10px; height:10px; border-radius:999px; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,0.7);
+    .dot { width:10px; height:10px; border-radius:999px; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,0.6);
       animation:pulse 2s infinite; display:none; }
     @keyframes pulse {
-      0% { box-shadow:0 0 0 0 rgba(34,197,94,0.7); }
-      70% { box-shadow:0 0 0 12px rgba(34,197,94,0); }
+      0% { box-shadow:0 0 0 0 rgba(34,197,94,0.6); }
+      70% { box-shadow:0 0 0 10px rgba(34,197,94,0); }
       100% { box-shadow:0 0 0 0 rgba(34,197,94,0); }
     }
-    .muted { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -70,7 +87,7 @@
 
   <!-- Top UI -->
   <div id="ui-top">
-    <!-- Controls (Start/Stop auto-swap + Reset) -->
+    <!-- Controls -->
     <div class="pill" id="controls">
       <button id="startBtn" class="btn primary">Start</button>
       <button id="stopBtn" class="btn" style="display:none;">Stop</button>
@@ -81,7 +98,7 @@
     <!-- Speed readout -->
     <div class="pill">
       <span class="muted">Speed</span>
-      <span id="speed" class="metric">—</span>
+      <span id="speed" class="metric">0</span>
       <span class="muted">mph</span>
     </div>
 
@@ -91,40 +108,42 @@
         <input type="checkbox" id="satToggle"> Satellite
       </label>
     </div>
+  </div>
 
-    <!-- Download icon with popover -->
-    <div class="pill" id="exportWrap" aria-haspopup="true">
-      <button id="exportBtn" title="Download">
-        <!-- simple download SVG -->
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path fill="currentColor"
-            d="M5 20h14v-2H5v2zm7-18l-5.5 5.5h3.5V16h4V7.5H17L12 2z"/>
-        </svg>
-      </button>
-      <div id="exportMenu" role="menu" aria-label="Export">
-        <button id="exportCsvBtn">Export CSV</button>
-        <button id="exportGpxBtn">Export GPX</button>
-      </div>
+  <!-- Export icon (top-right) -->
+  <div id="exportIconWrap">
+    <button id="exportBtn" title="Download">
+      <!-- true download icon: arrow down into tray -->
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor"
+          d="M5 20h14a1 1 0 0 0 1-1v-2h-2v1H6v-1H4v2a1 1 0 0 0 1 1zm6-17a1 1 0 0 1 1 1v8.586l2.293-2.293 1.414 1.414L12 16.414l-4.707-4.707 1.414-1.414L11 12.586V4a1 1 0 0 1 1-1z"/>
+      </svg>
+    </button>
+    <div id="exportMenu" role="menu" aria-label="Export">
+      <button id="exportCsvBtn">Export CSV</button>
+      <button id="exportGpxBtn">Export GPX</button>
     </div>
   </div>
 
   <!-- Legend bottom-left -->
   <div id="legend"></div>
 
-  <!-- Palette bottom-right -->
-  <div id="ui-bottom-right" class="pill">
-    <label for="paletteSelect">Colors</label>
-    <select id="paletteSelect" class="btn">
-      <option value="coolwarm">Cool→Warm</option>
-      <option value="traffic">Traffic Light</option>
-      <option value="viridis">Viridis</option>
-      <option value="mono">Monochrome</option>
-      <option value="rainbow">Rainbow</option>
-    </select>
+  <!-- Floating color wheel -->
+  <button id="colorBtn" title="Color options"></button>
+
+  <!-- Palette modal -->
+  <div id="modalOverlay">
+    <div id="modal">
+      <h3>Choose color palette</h3>
+      <div id="paletteList"></div>
+      <div class="modal-actions">
+        <button id="closeModal" class="small">Close</button>
+      </div>
+    </div>
   </div>
 
   <div id="toast"></div>
-  <div id="build">FASTA v7 (compact)</div>
+  <div id="build">FASTA v9 (clean)</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -133,12 +152,10 @@
   // --- Basemaps: Standard + Satellite (free)
   const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     { maxZoom: 20, attribution: '&copy; OpenStreetMap' });
-
   const esriSat = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     { maxZoom: 20, attribution: 'Tiles &copy; Esri' }
   );
-
   const map = L.map('map', { zoomControl: false, layers: [osm] });
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   map.setView([20, 0], 2);
@@ -153,9 +170,12 @@
   const exportGpxBtn = document.getElementById('exportGpxBtn');
   const speedEl  = document.getElementById('speed');
   const toastEl  = document.getElementById('toast');
-  const paletteSel = document.getElementById('paletteSelect');
   const satToggle = document.getElementById('satToggle');
   const runDot = document.getElementById('runDot');
+  const colorBtn = document.getElementById('colorBtn');
+  const modalOverlay = document.getElementById('modalOverlay');
+  const paletteList = document.getElementById('paletteList');
+  const closeModal = document.getElementById('closeModal');
 
   // --- State
   let running = false;
@@ -181,7 +201,8 @@
       runDot.style.display   = 'none';
     }
   }
-  updateButtons(); // start in "stopped" state as requested
+  updateButtons(); // start stopped
+  speedEl.textContent = '0';
 
   // --- Speed bins (mph, 6 bins)
   const SPEED_BINS = [2, 5, 15, 35, 55]; // <2, 2–5, 5–15, 15–35, 35–55, >55
@@ -193,6 +214,14 @@
     mono:     ['#edf8fb','#b2e2e2','#66c2a4','#2ca25f','#006d2c','#00441b'],
     rainbow:  ['#313695','#4575b4','#91cf60','#fee090','#fc8d59','#d73027']
   };
+  const PALETTE_NAMES = {
+    coolwarm: 'Cool→Warm',
+    traffic:  'Traffic Light',
+    viridis:  'Viridis',
+    mono:     'Monochrome',
+    rainbow:  'Rainbow'
+  };
+  let paletteKey = 'coolwarm';
 
   function speedBin(v){
     for (let i=0; i<SPEED_BINS.length; i++){
@@ -200,19 +229,15 @@
     }
     return SPEED_BINS.length;
   }
-
-  function colorForSpeed(v){
-    const pal = PALETTES[paletteSel.value || 'coolwarm'];
-    return pal[speedBin(v)];
-  }
-
+  function colorForSpeed(v){ return PALETTES[paletteKey][speedBin(v)]; }
   function formatSpeedMph(v){
-    if (v == null || !isFinite(v)) return '—';
+    if (v == null || !isFinite(v)) return '0';
     return (v*2.236936).toFixed(1); // m/s → mph
   }
 
+  // --- Legend
   function renderLegend(){
-    const pal = PALETTES[paletteSel.value || 'coolwarm'];
+    const pal = PALETTES[paletteKey];
     let html = `<div><strong>Color scale</strong> (mph)</div>`;
     for (let i=0; i<pal.length; i++){
       const range = (i===0)
@@ -225,7 +250,6 @@
     document.getElementById('legend').innerHTML = html;
   }
   renderLegend();
-  paletteSel.addEventListener('change', renderLegend);
 
   // --- Basemap toggle (Satellite on/off)
   function applyBasemap(){
@@ -238,16 +262,15 @@
     }
   }
   satToggle.addEventListener('change', applyBasemap);
-  applyBasemap(); // default map
+  applyBasemap();
 
-  // --- Popover for export (icon → menu)
+  // --- Export popover
   function hideMenu(){ exportMenu.style.display = 'none'; }
   function toggleMenu(){
     exportMenu.style.display = (exportMenu.style.display === 'block') ? 'none' : 'block';
   }
   exportBtn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleMenu(); });
   document.addEventListener('click', hideMenu);
-
   function download(filename, content, type='text/plain'){
     const blob = new Blob([content], {type});
     const url = URL.createObjectURL(blob);
@@ -275,6 +298,44 @@ ${rows.map(p => `  <trkpt lat="${p.lat}" lon="${p.lon}">
   exportCsvBtn.addEventListener('click', ()=>{ hideMenu(); download('track.csv', toCSV(points), 'text/csv'); });
   exportGpxBtn.addEventListener('click', ()=>{ hideMenu(); download('track.gpx', toGPX(points), 'application/gpx+xml'); });
 
+  // --- Color wheel → modal
+  function openPaletteModal(){
+    paletteList.innerHTML = '';
+    Object.keys(PALETTES).forEach(key => {
+      const row = document.createElement('div');
+      row.className = 'palette-row';
+      row.setAttribute('data-key', key);
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'palette';
+      radio.value = key;
+      radio.checked = (key === paletteKey);
+      const label = document.createElement('span');
+      label.textContent = PALETTE_NAMES[key];
+      const sw = document.createElement('div');
+      sw.className = 'swatches';
+      PALETTES[key].forEach(c => {
+        const s = document.createElement('span'); s.style.background = c; sw.appendChild(s);
+      });
+      row.appendChild(radio);
+      row.appendChild(label);
+      row.appendChild(sw);
+      row.addEventListener('click', () => {
+        paletteKey = key;
+        renderLegend();
+      });
+      paletteList.appendChild(row);
+    });
+    modalOverlay.style.display = 'block';
+  }
+  function closePaletteModal(){ modalOverlay.style.display = 'none'; }
+
+  colorBtn.addEventListener('click', openPaletteModal);
+  closeModal.addEventListener('click', closePaletteModal);
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) closePaletteModal();
+  });
+
   // --- Drawing and tracking
   function placePosition(lat, lon, acc){
     if (!posMarker) {
@@ -289,7 +350,6 @@ ${rows.map(p => `  <trkpt lat="${p.lat}" lon="${p.lon}">
       map.setView([lat, lon], targetZ);
     }
   }
-
   function haversine(a,b){
     const R=6371000;
     const dLat=(b.lat-a.lat)*Math.PI/180, dLon=(b.lon-a.lon)*Math.PI/180;
@@ -297,11 +357,9 @@ ${rows.map(p => `  <trkpt lat="${p.lat}" lon="${p.lon}">
     const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2);
     return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2));
   }
-
   function onPos(pos){
     const { latitude, longitude, speed, accuracy } = pos.coords;
     if (accuracy != null && accuracy > 5000) return; // skip very coarse fixes
-
     const t = pos.timestamp;
     const curr = {lat: latitude, lon: longitude, t};
     placePosition(latitude, longitude, accuracy);
@@ -324,7 +382,6 @@ ${rows.map(p => `  <trkpt lat="${p.lat}" lon="${p.lon}">
     last = curr;
     points.push({t, lat: latitude, lon: longitude, speed: v, acc: accuracy});
   }
-
   function onErr(err){
     console.error(err);
     showToast(err.message || 'Location error');
@@ -340,29 +397,23 @@ ${rows.map(p => `  <trkpt lat="${p.lat}" lon="${p.lon}">
     running = true; updateButtons();
     showToast('Tracking started');
   }
-
   function stop(){
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      watchId = null;
-    }
+    if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
     running = false; updateButtons();
     showToast('Tracking stopped');
   }
-
   function reset(){
     stop();
     last = null; points = [];
     layerGroup.clearLayers();
     posMarker = null; accCircle = null;
-    speedEl.textContent = '—';
+    speedEl.textContent = '0';
   }
-
   startBtn.addEventListener('click', start);
   stopBtn.addEventListener('click', stop);
   resetBtn.addEventListener('click', reset);
 
-  // Precise-first fix on load (center only, DO NOT start)
+  // Precise-first fix on load (center only, do NOT start)
   async function getPreciseFix({targetAcc=100, maxWaitMs=20000} = {}){
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
