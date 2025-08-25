@@ -6,9 +6,11 @@
   <meta name="theme-color" content="#1A5EB2" />
   <title>FASTA</title>
 
+  <!-- PWA (no service worker) -->
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
   <link rel="icon" href="./icons/icon-192.png" sizes="192x192">
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
   <style>
@@ -61,6 +63,16 @@
       display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.25)}
     .leaflet-control-locate svg{width:16px;height:16px}
 
+    /* Palette modal */
+    #modalOverlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:2300}
+    #modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#16161a;color:#fff;
+      border:1px solid #2a2a31;border-radius:14px;width:min(92vw,420px);padding:14px}
+    .palette-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;cursor:pointer}
+    .palette-row:hover{background:#1f1f25}
+    .swatches{display:flex;gap:4px;margin-left:auto}
+    .swatches span{width:20px;height:10px;border-radius:3px;display:inline-block}
+    .small{padding:6px 10px;border-radius:8px;border:1px solid #333;background:#202026;color:#fff;cursor:pointer}
+
     /* Splash */
     #splash{position:fixed;inset:0;z-index:3000;display:none;background:#1A5EB2;padding:16px;text-align:center;
       display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:auto}
@@ -81,7 +93,7 @@
       <button id="startBtn" class="btn primary">Start</button>
       <button id="stopBtn" class="btn" style="display:none;">Stop</button>
       <button id="resetBtn" class="btn warn">Reset</button>
-      <div id="runDot" class="dot"></div>
+      <div id="runDot" class="dot" title="Tracking running"></div>
     </div>
     <div class="pill"><span class="muted">Speed</span> <span id="speed" class="metric">0</span> <span class="muted">mph</span></div>
     <div class="pill"><label style="display:inline-flex;align-items:center;gap:6px;">
@@ -90,8 +102,12 @@
 
   <!-- Export -->
   <div id="exportIconWrap">
-    <button id="exportBtn" title="Download">⇩</button>
-    <div id="exportMenu">
+    <button id="exportBtn" title="Download">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path fill="currentColor" d="M5 20h14a1 1 0 0 0 1-1v-2h-2v1H6v-1H4v2a1 1 0 0 0 1 1zm6-17a1 1 0 0 1 1 1v8.6l2.3-2.3 1.4 1.4L12 16.4l-4.7-4.7 1.4-1.4L11 12.6V4a1 1 0 0 1 1-1z"/>
+      </svg>
+    </button>
+    <div id="exportMenu" role="menu" aria-label="Export">
       <button id="exportCsvBtn">Export CSV</button>
       <button id="exportGpxBtn">Export GPX</button>
       <button id="exportPngBtn">Export PNG (map)</button>
@@ -110,6 +126,17 @@
     </div>
   </div>
 
+  <!-- Palette modal -->
+  <div id="modalOverlay">
+    <div id="modal">
+      <h3>Choose color palette</h3>
+      <div id="paletteList"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+        <button id="closeModal" class="small">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 </div>
 
@@ -117,12 +144,14 @@
 <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
 <script>
 (function(){
-  const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20});
-  const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20});
+  /* Basemaps */
+  const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap',crossOrigin:'anonymous'});
+  const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles &copy; Esri',crossOrigin:'anonymous'});
+
   const map=L.map('map',{zoomControl:true,layers:[osm]});
   map.setView([20,0],2);
 
-  // Locate button
+  /* Locate control (above zoom) */
   const Locate=L.Control.extend({options:{position:'bottomright'},onAdd:function(){
     const c=L.DomUtil.create('div','leaflet-control-locate leaflet-bar');
     const a=L.DomUtil.create('a','',c); a.href="#"; a.title="Center on my location";
@@ -143,69 +172,129 @@
   }});
   map.addControl(new Locate());
 
+  /* Legend + palettes */
   const SPEED_BINS=[2,5,15,35,55];
-  const PALETTES={coolwarm:['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027']};
+  const PALETTES={
+    coolwarm:['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027'],
+    traffic:['#22c55e','#a3e635','#fde047','#f97316','#ef4444','#7f1d1d'],
+    viridis:['#440154','#31688e','#35b779','#90d743','#fde725','#ffffcc']
+  };
   let paletteKey='coolwarm';
 
+  function fanSVG(pal){
+    const parts=pal.slice(0,5).map((c,i)=>`<rect x="9" y="3" rx="2" ry="2" width="8" height="14" fill="${c}" transform="rotate(${ -25+i*12 } 10 15) translate(${i} ${i*0.6})"/>`).join('');
+    return `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${parts}<circle cx="10" cy="16" r="2.2" fill="#111" stroke="${pal[4]}" stroke-width="0.6"/></svg>`;
+  }
   function renderLegend(){
     const pal=PALETTES[paletteKey];
-    let html=`<div class="head"><div><strong>Color scale</strong> (mph)</div></div>`;
+    let html=`<div class="head"><div><strong>Color scale</strong> (mph)</div><button id="paletteBtn" title="Change colors">${fanSVG(pal)}</button></div>`;
     for(let i=0;i<pal.length;i++){
       const range=(i===0)?`< ${SPEED_BINS[0]}`:(i===pal.length-1)?`> ${SPEED_BINS.at(-1)}`:`${SPEED_BINS[i-1]}–${SPEED_BINS[i]}`;
       html+=`<div class="row"><span class="swatch" style="background:${pal[i]}"></span><span>${range}</span></div>`;
     }
-    document.getElementById('legend').innerHTML=html;
+    const el=document.getElementById('legend'); el.innerHTML=html;
+    el.querySelector('#paletteBtn').addEventListener('click',openPalette);
   }
   renderLegend();
 
-  // UI refs
-  const startBtn=document.getElementById('startBtn'),stopBtn=document.getElementById('stopBtn'),resetBtn=document.getElementById('resetBtn');
-  const satToggle=document.getElementById('satToggle'),speedEl=document.getElementById('speed'),runDot=document.getElementById('runDot');
-  const exportBtn=document.getElementById('exportBtn'),exportMenu=document.getElementById('exportMenu'),toast=document.getElementById('toast');
+  /* Palette modal */
+  const modalOverlay=document.getElementById('modalOverlay'), paletteList=document.getElementById('paletteList'), closeModal=document.getElementById('closeModal');
+  function openPalette(){
+    paletteList.innerHTML='';
+    Object.entries(PALETTES).forEach(([key,arr])=>{
+      const row=document.createElement('div'); row.className='palette-row';
+      row.innerHTML=`<span>${key}</span><div class="swatches">${arr.map(c=>`<span style="background:${c}"></span>`).join('')}</div>`;
+      row.addEventListener('click',()=>{ paletteKey=key; renderLegend(); modalOverlay.style.display='none';});
+      paletteList.appendChild(row);
+    });
+    modalOverlay.style.display='block';
+  }
+  closeModal.addEventListener('click',()=>modalOverlay.style.display='none');
+  modalOverlay.addEventListener('click',e=>{ if(e.target===modalOverlay) modalOverlay.style.display='none'; });
 
-  // State
-  let running=false,watchId=null,last=null,points=[];
+  /* Export */
+  const exportBtn=document.getElementById('exportBtn'), exportMenu=document.getElementById('exportMenu');
+  function hideMenu(){ exportMenu.style.display='none'; }
+  exportBtn.addEventListener('click',e=>{ e.stopPropagation(); exportMenu.style.display=(exportMenu.style.display==='block')?'none':'block'; });
+  document.addEventListener('click', hideMenu);
+  function download(name,content,type='text/plain'){ const b=new Blob([content],{type}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(u),0); }
+  function toCSV(rows){ const h=['time_iso','timestamp_ms','lat','lon','speed_mps','accuracy_m']; return [h.join(',')].concat(rows.map(p=>[new Date(p.t).toISOString(),p.t,p.lat,p.lon,(p.speed??''),(p.acc??'')].join(','))).join('\n'); }
+  function toGPX(rows){ const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="FASTA" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Speed-Color Track</name><trkseg>\n${rows.map(p=>`<trkpt lat="${p.lat}" lon="${p.lon}"><time>${esc(new Date(p.t).toISOString())}</time>${Number.isFinite(p.speed)?`<extensions><speed>${p.speed.toFixed(2)}</speed></extensions>`:''}</trkpt>`).join('\n')}\n</trkseg></trk></gpx>`; }
+  document.getElementById('exportCsvBtn').addEventListener('click', ()=>{ hideMenu(); download('track.csv', toCSV(points), 'text/csv'); });
+  document.getElementById('exportGpxBtn').addEventListener('click', ()=>{ hideMenu(); download('track.gpx', toGPX(points), 'application/gpx+xml'); });
+  document.getElementById('exportPngBtn').addEventListener('click', ()=>{
+    hideMenu();
+    if (typeof window.leafletImage !== 'function') { return alert('Map export not available'); }
+    window.leafletImage(map, (err, canvas)=>{
+      if (err || !canvas) { console.error(err); return; }
+      canvas.toBlob(blob=>{
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a'); a.href=url; a.download='map.png'; a.click();
+        setTimeout(()=>URL.revokeObjectURL(url),0);
+      });
+    });
+  });
+
+  /* Tracking */
+  const startBtn=document.getElementById('startBtn'), stopBtn=document.getElementById('stopBtn'), resetBtn=document.getElementById('resetBtn');
+  const satToggle=document.getElementById('satToggle'), speedEl=document.getElementById('speed'), runDot=document.getElementById('runDot');
+  let running=false, watchId=null, last=null, points=[];
   const layerGroup=L.layerGroup().addTo(map);
-  let posMarker=null,accCircle=null;
+  let posMarker=null, accCircle=null;
 
   function placePosition(lat,lon,acc){
     if(!posMarker){ posMarker=L.circleMarker([lat,lon],{radius:6,color:'#fff',weight:2,fillColor:'#4ade80',fillOpacity:0.9}).addTo(layerGroup);
       accCircle=L.circle([lat,lon],{radius:acc??15,color:'#999',weight:1,opacity:0.5,fillOpacity:0.05}).addTo(layerGroup);
-    }else{ posMarker.setLatLng([lat,lon]); accCircle.setLatLng([lat,lon]).setRadius(acc??15); }
+    } else { posMarker.setLatLng([lat,lon]); accCircle.setLatLng([lat,lon]).setRadius(acc??15); }
   }
   const R=6371000,toR=Math.PI/180;
-  function hav(a,b){const dLat=(b.lat-a.lat)*toR,dLon=(b.lon-a.lon)*toR;const s1=Math.sin(dLat/2),s2=Math.sin(dLon/2);return 2*R*Math.asin(Math.sqrt(s1*s1+Math.cos(a.lat*toR)*Math.cos(b.lat*toR)*s2*s2));}
-  function mph(x){return (x*2.236936).toFixed(1)}
-  function colorForSpeed(v){const pal=PALETTES[paletteKey];for(let i=0;i<SPEED_BINS.length;i++){if(v<SPEED_BINS[i])return pal[i];}return pal.at(-1);}
-  function showToast(t,ms=2000){toast.textContent=t;toast.style.display='block';setTimeout(()=>toast.style.display='none',ms);}
+  function hav(a,b){ const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR, lat1=a.lat*toR, lat2=b.lat*toR;
+    const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2); return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2)); }
+  function mph(x){ return (x*2.236936).toFixed(1); }
+  function colorForSpeed(v){ const pal=PALETTES[paletteKey]; for(let i=0;i<SPEED_BINS.length;i++){ if(v<SPEED_BINS[i]) return pal[i]; } return pal.at(-1); }
 
   function onPos(pos){
-    const {latitude,longitude,speed,accuracy}=pos.coords;if(accuracy!=null&&accuracy>10000)return;
-    const t=pos.timestamp,curr={lat:latitude,lon:longitude,t};placePosition(latitude,longitude,accuracy);
-    if(!last){last=curr;speedEl.textContent=(speed!=null&&speed>=0)?mph(speed):'0';points.push({t,lat:latitude,lon:longitude,speed:Math.max(speed??0,0),acc:accuracy});return;}
-    let v=(speed!=null&&speed>=0)?speed:0;const dt=(t-last.t)/1000;if(v===0&&dt>0){const d=hav(last,curr);if(d>1.5)v=d/dt;}
-    if(!isFinite(v)||v<0)v=0;speedEl.textContent=mph(v);
+    const {latitude,longitude,speed,accuracy}=pos.coords; if(accuracy!=null && accuracy>10000) return;
+    const t=pos.timestamp, curr={lat:latitude,lon:longitude,t}; placePosition(latitude,longitude,accuracy);
+    if(!last){ last=curr; speedEl.textContent=(speed!=null&&speed>=0)?mph(speed):'0'; points.push({t,lat:latitude,lon:longitude,speed:Math.max(speed??0,0),acc:accuracy}); return; }
+    let v=(speed!=null&&speed>=0)?speed:0; const dt=(t-last.t)/1000; if(v===0 && dt>0){ const d=hav(last,curr); if(d>1.5) v=d/dt; }
+    if(!isFinite(v)||v<0) v=0; speedEl.textContent=mph(v);
     layerGroup.addLayer(L.polyline([[last.lat,last.lon],[curr.lat,curr.lon]],{color:colorForSpeed(v),weight:6,opacity:.95}));
-    last=curr;points.push({t,lat:latitude,lon:longitude,speed:v,acc:accuracy});
+    last=curr; points.push({t,lat:latitude,lon:longitude,speed:v,acc:accuracy});
   }
-  function onErr(e){console.error(e);showToast(e?.message||'Location error');}
+  function onErr(e){ console.error(e); showToast(e?.message||'Location error'); }
+  function showToast(t,ms=2000){ const el=document.getElementById('toast'); el.textContent=t; el.style.display='block'; setTimeout(()=>el.style.display='none',ms); }
 
-  function start(){if(!navigator.geolocation)return showToast('Geolocation not supported');if(watchId!==null)return;
+  function start(){ if(!navigator.geolocation) return showToast('Geolocation not supported'); if(watchId!==null) return;
     watchId=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
-    running=true;startBtn.style.display='none';stopBtn.style.display='';runDot.style.display='inline-block';}
-  function stop(){if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
-    running=false;startBtn.style.display='';stopBtn.style.display='none';runDot.style.display='none';}
-  function reset(){stop();last=null;points=[];layerGroup.clearLayers();posMarker=null;accCircle=null;speedEl.textContent='0';}
-  startBtn.addEventListener('click',start);stopBtn.addEventListener('click',stop);resetBtn.addEventListener('click',reset);
+    running=true; startBtn.style.display='none'; stopBtn.style.display=''; runDot.style.display='inline-block'; }
+  function stop(){ if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
+    running=false; startBtn.style.display=''; stopBtn.style.display='none'; runDot.style.display='none'; }
+  function reset(){ stop(); last=null; points=[]; layerGroup.clearLayers(); posMarker=null; accCircle=null; speedEl.textContent='0'; }
+  startBtn.addEventListener('click',start); stopBtn.addEventListener('click',stop); resetBtn.addEventListener('click',reset);
 
-  satToggle.addEventListener('change',()=>{if(satToggle.checked){if(map.hasLayer(osm))map.removeLayer(osm);esri.addTo(map);}else{if(map.hasLayer(esri))map.removeLayer(esri);osm.addTo(map);}});
+  satToggle.addEventListener('change',()=>{ if(satToggle.checked){ if(map.hasLayer(osm)) map.removeLayer(osm); esri.addTo(map); } else { if(map.hasLayer(esri)) map.removeLayer(esri); osm.addTo(map); } });
 
-  // Export
-  function hideMenu(){exportMenu.style.display='none';}
-  exportBtn.addEventListener('click',e=>{e.stopPropagation();exportMenu.style.display=(exportMenu.style.display==='block')?'none':'block';});
-  document.addEventListener('click',hideMenu);
-  function toCSV(rows){const h=['time_iso','timestamp_ms','lat','lon','speed_mps','accuracy_m'];return[h.join(',')].concat(rows.map(p=>[new Date(p.t).toISOString(),p.t,p.lat,p.lon,(p.speed??''),(p.acc??'')].join(','))).join('\n');}
-  function toGPX(rows){const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');return `<?xml version="1.0"?><gpx version="1.1" creator="FASTA" xmlns="http://www.topografix.com/GPX/1/1"><trk><trkseg>${rows.map(p=>`<trkpt lat="${p.lat}" lon="${p.lon}"><time>${esc(new Date(p.t).toISOString())}</time></trkpt>`).join('')}</trkseg></trk></gpx>`;}
-  document.getElementById('exportCsvBtn').addEventListener('click',()=>{hideMenu();const b=new Blob([toCSV(points)],{type:'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='track.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),0);});
-  document.getElementById('exportGpxBtn').addEventListener('click',()=>{hideMenu();const b=new Blob([toGPX(points)],{type:'application/gpx+xml'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='track.gpx';a.click();setTimeout(()=>URL.revokeObjectURL(u),0);});
- 
+  /* Splash dismiss + initial center */
+  const SPLASH_KEY='fasta_hide_splash';
+  const splash=document.getElementById('splash'), dismissSplash=document.getElementById('dismissSplash'), dontShow=document.getElementById('dontShow');
+  function centerOnce(){ if(!navigator.geolocation) return; navigator.geolocation.getCurrentPosition(
+    p=>{ map.setView([p.coords.latitude,p.coords.longitude],16); placePosition(p.coords.latitude,p.coords.longitude,p.coords.accuracy); },
+    ()=>{}, { enableHighAccuracy:true, timeout:8000 }); }
+
+  if (dismissSplash) {
+    dismissSplash.addEventListener('click', ()=>{
+      if (dontShow && dontShow.checked) localStorage.setItem(SPLASH_KEY,'1');
+      splash.style.display='none';
+      centerOnce();
+    });
+  }
+  if (localStorage.getItem(SPLASH_KEY) !== '1') {
+    splash.style.display='flex';
+  } else {
+    centerOnce();
+  }
+})();
+</script>
+</body>
+</html>
