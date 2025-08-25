@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <title>FASTA</title>
   <meta name="theme-color" content="#1A5EB2" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>FASTA</title>
 
   <!-- PWA -->
   <link rel="manifest" href="./manifest.json">
@@ -13,133 +14,259 @@
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
-    :root { --bg:#1A5EB2; --fg:#f5f5f7; --btn:#1b1b1b; --muted:#a3a3a3; }
+    :root { --bg:#1A5EB2; --fg:#f5f5f7; --muted:#a3a3a3; }
     html,body,#app { height:100%; margin:0; background:var(--bg); color:var(--fg);
-      font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+      font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
     #map { position:absolute; inset:0; }
 
-    /* Locate button styled like zoom */
-    .leaflet-control-locate {
-      display:flex; flex-direction:column;
+    /* ---------- Top controls (always visible on iPhone) ---------- */
+    #ui-top {
+      position:fixed; left:0; right:0;
+      top:calc(env(safe-area-inset-top) + 6px);
+      display:flex; gap:8px; padding:8px 12px;
+      z-index:2000; align-items:center; flex-wrap:wrap;
+      pointer-events:auto; /* ensure taps work */
     }
-    .leaflet-control-locate a {
-      width:26px; height:26px;
-      background:#fff; border:1px solid rgba(0,0,0,0.2);
-      text-align:center; line-height:26px;
-      color:#000; font-size:16px;
+    .pill { display:inline-flex; align-items:center; gap:8px; border-radius:999px;
+      background:rgba(17,17,17,.68); padding:8px 12px; backdrop-filter:blur(8px);
+      border:1px solid rgba(255,255,255,.1); }
+    .btn { appearance:none; border:1px solid rgba(255,255,255,.15);
+      background:#222; color:var(--fg); border-radius:999px; padding:8px 12px;
+      font-weight:600; cursor:pointer; }
+    .btn.primary { background:#14532d; border-color:#1f7a47;}
+    .btn.warn { background:#7a1f1f; border-color:#a33; }
+    .metric { font-variant-numeric:tabular-nums; }
+    .muted { color:var(--muted); }
+
+    /* ---------- Legend ---------- */
+    #legend { position:fixed; bottom:16px; left:16px; background:rgba(17,17,17,.65);
+      border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; backdrop-filter:blur(8px); z-index:1500; min-width:210px;}
+    #legend .row { display:flex; align-items:center; gap:8px; margin:.25rem 0; }
+    .swatch { width:24px; height:10px; border-radius:4px; }
+
+    /* ---------- Export icon ---------- */
+    #exportIconWrap { position:fixed; top:calc(env(safe-area-inset-top) + 10px); right:12px; z-index:2200; }
+    #exportBtn { width:30px; height:30px; display:flex; align-items:center; justify-content:center;
+      background:#fff; border:1px solid rgba(0,0,0,.25); border-radius:6px; cursor:pointer; color:#222; }
+    #exportBtn:hover { background:#f5f5f5; }
+    #exportMenu { position:absolute; top:36px; right:0; background:#151515; border:1px solid #333; border-radius:10px;
+      padding:6px; display:none; min-width:160px; }
+    #exportMenu button { width:100%; text-align:left; border:none; background:transparent; color:var(--fg);
+      padding:8px 10px; border-radius:8px; cursor:pointer; }
+    #exportMenu button:hover { background:#222; }
+
+    /* ---------- Locate control styled like zoom ---------- */
+    .leaflet-control-zoom { margin-right:10px; }
+    .leaflet-bottom.leaflet-right .leaflet-control-locate { margin:0 10px 56px 0; } /* 56px above zoom */
+    .leaflet-control-locate.leaflet-bar a {
+      width:30px; height:30px;
+      background:#fff; border:1px solid rgba(0,0,0,0.25);
       display:flex; align-items:center; justify-content:center;
+      box-shadow:0 1px 3px rgba(0,0,0,.25); padding:0; line-height:0;
     }
-    .leaflet-control-locate a:hover { background:#f4f4f4; }
-    .leaflet-control-locate svg {
-      width:14px; height:14px; display:block;
-    }
+    .leaflet-control-locate.leaflet-bar a:hover { background:#f5f5f5; }
+    .leaflet-control-locate svg { width:16px; height:16px; display:block; }
 
-    /* Position locate immediately above zoom */
-    .leaflet-bottom.leaflet-right .leaflet-control-locate {
-      margin-bottom: 58px; /* zoom control is ~52px tall, add spacing */
-    }
-
-    /* Splash overlay */
+    /* ---------- Splash (responsive; never blocks buttons) ---------- */
     #splash {
-      position:fixed;inset:0;display:none;z-index:1500;
-      background:#1A5EB2;
-      color:#eef1f6;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      padding:32px;text-align:center;
+      position:fixed; inset:0; z-index:3000; display:none;
+      background:#1A5EB2; padding:16px; text-align:center;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      overflow:auto;  /* allow scroll if very small screens */
     }
     #splash img {
-      max-width:80%;height:auto;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.3);
+      max-width:90%; max-height:68%; height:auto; width:auto;
+      border-radius:16px; box-shadow:0 4px 20px rgba(0,0,0,.3);
     }
-    #splash .tag { margin-top:24px;font-size: clamp(16px, 4.2vw, 36px); line-height:1.2; }
-    #splash label { display:inline-flex;align-items:center;gap:8px;font-size:14px;opacity:0.9; }
+    #splash .controls { margin-top:14px; display:flex; flex-direction:column; gap:10px; align-items:center; }
+    #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+      background:#222; border:1px solid #333; color:#fff; padding:10px 14px; border-radius:12px; display:none; z-index:4000; }
   </style>
 </head>
 <body>
 <div id="app">
   <div id="map"></div>
 
-  <!-- Splash overlay with your graphic -->
-  <div id="splash">
-    <img src="./icons/splash-1284x2778.png" alt="FASTA splash"/>
-    <div class="tag">your path,<br/>colored by <em>speed</em>.</div>
-    <div style="margin-top:16px;">
-      <label><input type="checkbox" id="dontShow"> Don’t show again</label>
+  <!-- Top UI (always above the map) -->
+  <div id="ui-top">
+    <div class="pill" id="controls">
+      <button id="startBtn" class="btn primary">Start</button>
+      <button id="stopBtn" class="btn" style="display:none;">Stop</button>
+      <button id="resetBtn" class="btn warn">Reset</button>
     </div>
-    <div style="margin-top:12px;">
+    <div class="pill">
+      <span class="muted">Speed</span>
+      <span id="speed" class="metric">0</span>
+      <span class="muted">mph</span>
+    </div>
+    <div class="pill">
+      <label style="display:inline-flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="satToggle"> Satellite
+      </label>
+    </div>
+  </div>
+
+  <!-- Export icon -->
+  <div id="exportIconWrap">
+    <button id="exportBtn" title="Download">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path fill="currentColor" d="M5 20h14a1 1 0 0 0 1-1v-2h-2v1H6v-1H4v2a1 1 0 0 0 1 1zm6-17a1 1 0 0 1 1 1v8.6l2.3-2.3 1.4 1.4L12 16.4l-4.7-4.7 1.4-1.4L11 12.6V4a1 1 0 0 1 1-1z"/>
+      </svg>
+    </button>
+    <div id="exportMenu" role="menu" aria-label="Export">
+      <button id="exportCsvBtn">Export CSV</button>
+      <button id="exportGpxBtn">Export GPX</button>
+      <button id="exportPngBtn">Export PNG (map)</button>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div id="legend"></div>
+
+  <!-- Splash overlay with responsive image -->
+  <div id="splash">
+    <img src="./icons/splash-1284x2778.png?v=5" alt="FASTA splash" onerror="this.style.display='none'">
+    <div class="controls">
+      <label><input type="checkbox" id="dontShow"> Don’t show again</label>
       <button id="dismissSplash" class="btn">Continue</button>
     </div>
   </div>
 
   <div id="toast"></div>
-  <div id="build">FASTA v16 (splash image + polished locate)</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
 <script>
 (function(){
+  /* -------- SW -------- */
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(()=>{});
   }
 
+  /* -------- Map -------- */
   const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     { maxZoom: 20, attribution: '&copy; OpenStreetMap', crossOrigin: 'anonymous' });
+  const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 20, attribution: 'Tiles © Esri', crossOrigin: 'anonymous' });
 
-  const map = L.map('map',{zoomControl:true,layers:[osm]});
-  map.setView([20,0],2);
+  const map = L.map('map',{ zoomControl:true, layers:[osm] });
+  map.setView([20,0], 2);
 
-  // Center on current location at startup (after splash)
-  async function initAtLocation(){
-    if(!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      pos=>{
-        const {latitude,longitude} = pos.coords;
-        map.setView([latitude,longitude], 16);
-      },
-      ()=>{},
-      {enableHighAccuracy:true,timeout:8000}
-    );
-  }
-
-  // Locate control styled like zoom
+  /* -------- Locate control (matching zoom) -------- */
   const LocateControl = L.Control.extend({
     options: { position: 'bottomright' },
-    onAdd: function() {
-      const container = L.DomUtil.create('div','leaflet-control-locate leaflet-bar');
-      const a = L.DomUtil.create('a','',container);
-      a.href="#"; a.title="Center on my location";
-      a.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="7"/>
-        <line x1="12" y1="2" x2="12" y2="5"/>
-        <line x1="12" y1="19" x2="12" y2="22"/>
-        <line x1="2" y1="12" x2="5" y2="12"/>
-        <line x1="19" y1="12" x2="22" y2="12"/>
-        <circle cx="12" cy="12" r="2" fill="currentColor"/>
-      </svg>`;
-      L.DomEvent.on(a,'click', e=>{
+    onAdd: function () {
+      const c = L.DomUtil.create('div','leaflet-control-locate leaflet-bar');
+      const a = L.DomUtil.create('a','',c); a.href="#"; a.title="Center on my location";
+      a.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
+        + '<circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/>'
+        + '<line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/>'
+        + '<line x1="19" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>';
+      L.DomEvent.on(a,'click', (e)=>{
         L.DomEvent.stop(e);
         if(!navigator.geolocation) return;
         navigator.geolocation.getCurrentPosition(
-          pos=>{
-            const {latitude,longitude}=pos.coords;
-            map.flyTo([latitude,longitude], Math.max(map.getZoom(),16), {duration:0.6});
-          },
-          ()=>{},
-          {enableHighAccuracy:true,timeout:10000}
+          pos => map.flyTo([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(),16), {duration:0.6}),
+          ()=>{}, { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
         );
       });
-      return container;
+      return c;
     }
   });
   map.addControl(new LocateControl());
 
-  // Splash behavior
+  /* -------- UI refs -------- */
+  const startBtn=document.getElementById('startBtn'),
+        stopBtn=document.getElementById('stopBtn'),
+        resetBtn=document.getElementById('resetBtn'),
+        satToggle=document.getElementById('satToggle'),
+        speedEl=document.getElementById('speed'),
+        exportBtn=document.getElementById('exportBtn'),
+        exportMenu=document.getElementById('exportMenu'),
+        toastEl=document.getElementById('toast');
+
+  /* -------- State -------- */
+  let running=false, watchId=null, last=null, points=[];
+  const layerGroup=L.layerGroup().addTo(map);
+  let posMarker=null, accCircle=null;
+  let paletteKey='coolwarm';
+  const SPEED_BINS=[2,5,15,35,55];
+  const PALETTES={
+    coolwarm:['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027']
+  };
+
+  function speedBin(v){ for(let i=0;i<SPEED_BINS.length;i++){ if(v<SPEED_BINS[i]) return i; } return SPEED_BINS.length; }
+  function colorForSpeed(v){ return PALETTES[paletteKey][speedBin(v)]; }
+  function mph(x){ return (x*2.236936).toFixed(1); }
+  function showToast(msg,ms=2000){ toastEl.textContent=msg; toastEl.style.display='block'; setTimeout(()=>toastEl.style.display='none',ms); }
+
+  /* -------- Legend -------- */
+  function renderLegend(){
+    const pal=PALETTES[paletteKey], el=document.getElementById('legend');
+    el.innerHTML = pal.map((c,i)=>{
+      const range=(i===0)?`< ${SPEED_BINS[0]}`:(i===pal.length-1)?`> ${SPEED_BINS.at(-1)}`:`${SPEED_BINS[i-1]}–${SPEED_BINS[i]}`;
+      return `<div class="row"><span class="swatch" style="background:${c}"></span> <span>${range} mph</span></div>`;
+    }).join('');
+  }
+  renderLegend();
+
+  /* -------- Export -------- */
+  function hideMenu(){ exportMenu.style.display='none'; }
+  exportBtn.addEventListener('click', e=>{ e.stopPropagation(); exportMenu.style.display = (exportMenu.style.display==='block')?'none':'block'; });
+  document.addEventListener('click', hideMenu);
+  function download(name, content, type='text/plain'){ const b=new Blob([content],{type}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(u),0); }
+  function toCSV(rows){ const h=['time_iso','timestamp_ms','lat','lon','speed_mps','accuracy_m']; return [h.join(',')].concat(rows.map(p=>[new Date(p.t).toISOString(),p.t,p.lat,p.lon,(p.speed??''),(p.acc??'')].join(','))).join('\n'); }
+  function toGPX(rows){ const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="FASTA" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Speed-Color Track</name><trkseg>\n${rows.map(p=>`<trkpt lat="${p.lat}" lon="${p.lon}"><time>${esc(new Date(p.t).toISOString())}</time>${Number.isFinite(p.speed)?`<extensions><speed>${p.speed.toFixed(2)}</speed></extensions>`:''}</trkpt>`).join('\n')}\n</trkseg></trk></gpx>`; }
+  document.getElementById('exportCsvBtn').addEventListener('click', ()=>{ hideMenu(); download('track.csv', toCSV(points), 'text/csv'); });
+  document.getElementById('exportGpxBtn').addEventListener('click', ()=>{ hideMenu(); download('track.gpx', toGPX(points), 'application/gpx+xml'); });
+  document.getElementById('exportPngBtn').addEventListener('click', ()=>{ hideMenu(); if(!window.leafletImage) return alert('PNG export not available'); window.leafletImage(map,(err,canvas)=>{ if(err||!canvas) return; canvas.toBlob(b=>{ const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='map.png'; a.click(); setTimeout(()=>URL.revokeObjectURL(u),0); }); }); });
+
+  /* -------- Tracking -------- */
+  function applyBasemap(){ if(satToggle.checked){ if(map.hasLayer(osm)) map.removeLayer(osm); esriSat.addTo(map); } else { if(map.hasLayer(esriSat)) map.removeLayer(esriSat); osm.addTo(map); } }
+  satToggle.addEventListener('change', applyBasemap); applyBasemap();
+
+  function placePosition(lat,lon,acc){
+    if(!posMarker){
+      posMarker=L.circleMarker([lat,lon],{radius:6,color:'#fff',weight:2,fillColor:'#4ade80',fillOpacity:0.9}).addTo(layerGroup);
+      accCircle=L.circle([lat,lon],{radius:acc??15,color:'#999',weight:1,opacity:0.5,fillOpacity:0.05}).addTo(layerGroup);
+    } else { posMarker.setLatLng([lat,lon]); accCircle.setLatLng([lat,lon]).setRadius(acc??15); }
+  }
+  const R=6371000, toR=Math.PI/180;
+  function haversine(a,b){ const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR; const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2); return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(a.lat*toR)*Math.cos(b.lat*toR)*s2*s2)); }
+  function onPos(pos){
+    const { latitude, longitude, speed, accuracy } = pos.coords; if(accuracy!=null && accuracy>10000) return;
+    const t=pos.timestamp, curr={lat:latitude,lon:longitude,t}; placePosition(latitude,longitude,accuracy);
+    if(!last){ last=curr; speedEl.textContent = (speed!=null && speed>=0) ? mph(speed) : '0'; points.push({t,lat:latitude,lon:longitude,speed:Math.max(speed??0,0),acc:accuracy}); return; }
+    let v=(speed!=null && speed>=0)?speed:0; const dt=(t-last.t)/1000; if(v===0 && dt>0){ const d=haversine(last,curr); if(d>1.5) v=d/dt; }
+    if(!isFinite(v)||v<0) v=0; speedEl.textContent=mph(v);
+    layerGroup.addLayer(L.polyline([[last.lat,last.lon],[curr.lat,curr.lon]],{color:colorForSpeed(v),weight:6,opacity:0.95}));
+    last=curr; points.push({t,lat:latitude,lon:longitude,speed:v,acc:accuracy});
+  }
+  function onErr(err){ console.error(err); showToast(err?.message||'Location error'); }
+
+  function start(){ if(!navigator.geolocation) return showToast('Geolocation not supported'); if(watchId!==null) return;
+    watchId=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+    running=true; startBtn.style.display='none'; stopBtn.style.display=''; }
+  function stop(){ if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
+    running=false; startBtn.style.display=''; stopBtn.style.display='none'; }
+  function reset(){ stop(); last=null; points=[]; layerGroup.clearLayers(); posMarker=null; accCircle=null; speedEl.textContent='0'; }
+  startBtn.addEventListener('click', start); stopBtn.addEventListener('click', stop); resetBtn.addEventListener('click', reset);
+
+  /* -------- Splash logic: responsive & dismissable -------- */
   const SPLASH_KEY='fasta_hide_splash';
-  const splash=document.getElementById('splash'),
-        dismissSplash=document.getElementById('dismissSplash'),
-        dontShow=document.getElementById('dontShow');
+  const splash=document.getElementById('splash'), dismissSplash=document.getElementById('dismissSplash'), dontShow=document.getElementById('dontShow');
   function maybeShowSplash(){
+    if (new URL(location.href).searchParams.get('splash')==='1') localStorage.removeItem(SPLASH_KEY);
     if (localStorage.getItem(SPLASH_KEY) === '1') { initAtLocation(); return; }
     splash.style.display='flex';
+  }
+  function initAtLocation(){
+    if(!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos=>{ map.setView([pos.coords.latitude,pos.coords.longitude], 16); placePosition(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy); },
+      ()=>{}, { enableHighAccuracy:true, timeout:8000 }
+    );
   }
   dismissSplash.addEventListener('click', ()=>{
     if(dontShow.checked) localStorage.setItem(SPLASH_KEY,'1');
