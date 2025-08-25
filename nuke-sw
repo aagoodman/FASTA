@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <meta charset="utf-8">
+  <title>Kill Service Worker</title>
+  <body>Clearing service workers and caches…</body>
+  <script>
+    (async () => {
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        // redirect to fresh page
+        location.href = './abbyapp.html?v=' + Date.now();
+      } catch (e) {
+        document.body.innerText = 'Failed to clear SW/caches: ' + e;
+      }
+    })();
+  </script>
+</html>
