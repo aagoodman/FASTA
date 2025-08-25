@@ -1,10 +1,12 @@
-const CACHE = "fasta-v1";
+const CACHE = "fasta-v2";   // <- bump this
 const ASSETS = [
   "./",
   "./index.html",
   "./manifest.json",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "./icons/icon-1024.png",
+  "./icons/splash-1284x2778.png"
 ];
 
 self.addEventListener("install", (e) => {
