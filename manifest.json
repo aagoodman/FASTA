@@ -1,7 +1,7 @@
 {
   "name": "FASTA",
   "short_name": "FASTA",
-  "start_url": "./index.html",
+  "start_url": "./abbyapp.html",
   "display": "standalone",
   "background_color": "#1A5EB2",
   "theme_color": "#1A5EB2",
