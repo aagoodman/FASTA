@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
   <title>Speed-Color Map (mph, clean)</title>
   <meta name="theme-color" content="#111111" />
   <link rel="preconnect" href="https://unpkg.com">
@@ -13,81 +12,63 @@
     html,body,#app { height:100%; margin:0; background:var(--bg); color:var(--fg);
       font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
     #map { position:absolute; inset:0; }
-
-    /* Top bar */
-    #ui-top { position:fixed; top:env(safe-area-inset-top); left:0; right:0;
-      display:flex; gap:8px; padding:10px 12px;
-      background:linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0));
-      z-index:1000; align-items:center; flex-wrap:wrap; }
-    .pill { display:inline-flex; align-items:center; gap:8px; border-radius:999px;
-      background:rgba(17,17,17,.7); padding:8px 12px; backdrop-filter:blur(8px);
-      border:1px solid rgba(255,255,255,.08); }
+    #ui-top { position:fixed; top:env(safe-area-inset-top); left:0; right:0; display:flex; gap:8px; padding:10px 12px;
+      background:linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0)); z-index:1000; align-items:center; flex-wrap:wrap; }
+    .pill { display:inline-flex; align-items:center; gap:8px; border-radius:999px; background:rgba(17,17,17,.7);
+      padding:8px 12px; backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08); }
     .btn { appearance:none; border:1px solid #333; background:var(--btn); color:var(--fg);
       border-radius:999px; padding:8px 12px; font-weight:600; cursor:pointer; }
-    .btn:active { transform:translateY(1px); }
     .btn.primary { background:#14532d; border-color:#1f7a47;}
     .btn.warn { background:#7a1f1f; border-color:#a33; }
     .metric { font-variant-numeric:tabular-nums; }
     .muted { color: var(--muted); }
 
-    /* Legend bottom-left */
     #legend { position:fixed; bottom:16px; left:16px; background:rgba(17,17,17,.7);
-      border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; backdrop-filter:blur(8px); z-index:1000;}
+      border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; backdrop-filter:blur(8px); z-index:1000; min-width:210px;}
+    #legend .head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
     #legend .row { display:flex; align-items:center; gap:8px; margin:.25rem 0; }
     .swatch { width:24px; height:10px; border-radius:4px; }
 
-    /* Export icon (top-right, light + tight) */
+    #paletteBtn { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px;
+      background:rgba(255,255,255,.9); border:1px solid #d9d9df; border-radius:8px; cursor:pointer; }
+    #paletteBtn:hover { background:#fff; }
+    #paletteBtn svg { width:20px; height:20px; }
+
     #exportIconWrap { position:fixed; top:calc(env(safe-area-inset-top) + 10px); right:12px; z-index:1200; }
     #exportBtn { width:28px; height:28px; display:flex; align-items:center; justify-content:center;
       background:rgba(255,255,255,0.9); border:1px solid #d9d9df; border-radius:8px; cursor:pointer; }
     #exportBtn:hover { background:#ffffff; }
     #exportBtn svg { width:18px; height:18px; color:#2b2b30; }
     #exportMenu { position:absolute; top:34px; right:0; background:#151515; border:1px solid #333; border-radius:10px;
-      padding:6px; display:none; min-width:140px; }
+      padding:6px; display:none; min-width:160px; }
     #exportMenu button { width:100%; text-align:left; border:none; background:transparent; color:var(--fg);
       padding:8px 10px; border-radius:8px; cursor:pointer; }
     #exportMenu button:hover { background:#222; }
 
-    /* Color wheel button (floating, not over zoom) */
-    #colorBtn { position:fixed; right:16px; bottom:88px; z-index:1100; width:36px; height:36px;
-      border-radius:999px; border:1px solid rgba(255,255,255,.15); cursor:pointer;
-      background: conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
-      box-shadow: 0 2px 6px rgba(0,0,0,.25); }
-
-    /* Palette modal */
     #modalOverlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; z-index:1300; }
     #modal { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
       background:#16161a; color:#fff; border:1px solid #2a2a31; border-radius:14px; width:min(92vw,420px); padding:14px; }
     #modal h3 { margin:6px 6px 10px; font-size:16px; }
     .palette-row { display:flex; align-items:center; gap:10px; padding:8px; border-radius:10px; cursor:pointer; }
     .palette-row:hover { background:#1f1f25; }
-    .swatches { display:flex; gap:4px; }
+    .swatches { display:flex; gap:4px; margin-left:auto; }
     .swatches span { width:20px; height:10px; border-radius:3px; display:inline-block; }
-    .modal-actions { display:flex; justify-content:flex-end; gap:8px; padding-top:8px; }
     .small { padding:6px 10px; border-radius:8px; border:1px solid #333; background:#202026; color:#fff; cursor:pointer; }
 
-    /* Toast + build */
     #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
       background:#222; border:1px solid #333; color:#fff; padding:10px 14px; border-radius:12px; display:none; z-index:2000; }
     #build { position:fixed; right:8px; bottom:8px; font:12px/1.2 -apple-system,system-ui; opacity:.6; }
 
-    /* Running indicator: subtle pulsing dot */
     .dot { width:10px; height:10px; border-radius:999px; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,0.6);
       animation:pulse 2s infinite; display:none; }
-    @keyframes pulse {
-      0% { box-shadow:0 0 0 0 rgba(34,197,94,0.6); }
-      70% { box-shadow:0 0 0 10px rgba(34,197,94,0); }
-      100% { box-shadow:0 0 0 0 rgba(34,197,94,0); }
-    }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(34,197,94,0.6);} 70%{box-shadow:0 0 0 10px rgba(34,197,94,0);} 100%{box-shadow:0 0 0 0 rgba(34,197,94,0);} }
   </style>
 </head>
 <body>
 <div id="app">
   <div id="map"></div>
 
-  <!-- Top UI -->
   <div id="ui-top">
-    <!-- Controls -->
     <div class="pill" id="controls">
       <button id="startBtn" class="btn primary">Start</button>
       <button id="stopBtn" class="btn" style="display:none;">Stop</button>
@@ -95,14 +76,12 @@
       <div id="runDot" class="dot" title="Tracking running"></div>
     </div>
 
-    <!-- Speed readout -->
     <div class="pill">
       <span class="muted">Speed</span>
       <span id="speed" class="metric">0</span>
       <span class="muted">mph</span>
     </div>
 
-    <!-- Satellite toggle -->
     <div class="pill">
       <label style="display:inline-flex;align-items:center;gap:6px;">
         <input type="checkbox" id="satToggle"> Satellite
@@ -110,10 +89,8 @@
     </div>
   </div>
 
-  <!-- Export icon (top-right) -->
   <div id="exportIconWrap">
     <button id="exportBtn" title="Download">
-      <!-- true download icon: arrow down into tray -->
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path fill="currentColor"
           d="M5 20h14a1 1 0 0 0 1-1v-2h-2v1H6v-1H4v2a1 1 0 0 0 1 1zm6-17a1 1 0 0 1 1 1v8.586l2.293-2.293 1.414 1.414L12 16.414l-4.707-4.707 1.414-1.414L11 12.586V4a1 1 0 0 1 1-1z"/>
@@ -122,325 +99,191 @@
     <div id="exportMenu" role="menu" aria-label="Export">
       <button id="exportCsvBtn">Export CSV</button>
       <button id="exportGpxBtn">Export GPX</button>
+      <button id="exportPngBtn">Export PNG (map)</button>
     </div>
   </div>
 
-  <!-- Legend bottom-left -->
   <div id="legend"></div>
 
-  <!-- Floating color wheel -->
-  <button id="colorBtn" title="Color options"></button>
-
-  <!-- Palette modal -->
   <div id="modalOverlay">
     <div id="modal">
       <h3>Choose color palette</h3>
       <div id="paletteList"></div>
-      <div class="modal-actions">
+      <div style="display:flex; justify-content:flex-end; margin-top:8px;">
         <button id="closeModal" class="small">Close</button>
       </div>
     </div>
   </div>
 
   <div id="toast"></div>
-  <div id="build">FASTA v9 (clean)</div>
+  <div id="build">FASTA v11 (PNG export)</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Add leaflet-image for map → canvas export -->
+<script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
 <script>
 (function(){
-  // --- Basemaps: Standard + Satellite (free)
+  // Basemaps (with CORS so canvas export works)
   const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    { maxZoom: 20, attribution: '&copy; OpenStreetMap' });
+    { maxZoom: 20, attribution: '&copy; OpenStreetMap', crossOrigin: 'anonymous' });
   const esriSat = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 20, attribution: 'Tiles &copy; Esri' }
+    { maxZoom: 20, attribution: 'Tiles &copy; Esri', crossOrigin: 'anonymous' }
   );
-  const map = L.map('map', { zoomControl: false, layers: [osm] });
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
-  map.setView([20, 0], 2);
+  const map = L.map('map',{zoomControl:false,layers:[osm]});
+  L.control.zoom({position:'bottomright'}).addTo(map);
+  map.setView([20,0],2);
 
-  // --- UI refs
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn  = document.getElementById('stopBtn');
-  const resetBtn = document.getElementById('resetBtn');
-  const exportBtn = document.getElementById('exportBtn');
-  const exportMenu = document.getElementById('exportMenu');
-  const exportCsvBtn = document.getElementById('exportCsvBtn');
-  const exportGpxBtn = document.getElementById('exportGpxBtn');
-  const speedEl  = document.getElementById('speed');
-  const toastEl  = document.getElementById('toast');
-  const satToggle = document.getElementById('satToggle');
-  const runDot = document.getElementById('runDot');
-  const colorBtn = document.getElementById('colorBtn');
-  const modalOverlay = document.getElementById('modalOverlay');
-  const paletteList = document.getElementById('paletteList');
-  const closeModal = document.getElementById('closeModal');
+  // UI refs
+  const startBtn=document.getElementById('startBtn'), stopBtn=document.getElementById('stopBtn'), resetBtn=document.getElementById('resetBtn');
+  const exportBtn=document.getElementById('exportBtn'), exportMenu=document.getElementById('exportMenu');
+  const exportCsvBtn=document.getElementById('exportCsvBtn'), exportGpxBtn=document.getElementById('exportGpxBtn'), exportPngBtn=document.getElementById('exportPngBtn');
+  const speedEl=document.getElementById('speed'), toastEl=document.getElementById('toast'), satToggle=document.getElementById('satToggle');
+  const runDot=document.getElementById('runDot');
+  const modalOverlay=document.getElementById('modalOverlay'), paletteList=document.getElementById('paletteList'), closeModal=document.getElementById('closeModal');
 
-  // --- State
-  let running = false;
-  let watchId = null, last = null, points = [];
-  const layerGroup = L.layerGroup().addTo(map);
-  let posMarker = null, accCircle = null;
-  let autoCenter = true; // keep centered by default
+  // State
+  let running=false, watchId=null, last=null, points=[]; const layerGroup=L.layerGroup().addTo(map);
+  let posMarker=null, accCircle=null; let autoCenter=true; let paletteKey='coolwarm';
 
-  function showToast(msg, ms=2200){
-    toastEl.textContent = msg;
-    toastEl.style.display = 'block';
-    setTimeout(()=> toastEl.style.display='none', ms);
-  }
-
-  function updateButtons(){
-    if (running) {
-      startBtn.style.display = 'none';
-      stopBtn.style.display  = '';
-      runDot.style.display   = 'inline-block';
-    } else {
-      startBtn.style.display = '';
-      stopBtn.style.display  = 'none';
-      runDot.style.display   = 'none';
-    }
-  }
-  updateButtons(); // start stopped
-  speedEl.textContent = '0';
-
-  // --- Speed bins (mph, 6 bins)
-  const SPEED_BINS = [2, 5, 15, 35, 55]; // <2, 2–5, 5–15, 15–35, 35–55, >55
-
-  const PALETTES = {
-    coolwarm: ['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027'],
-    traffic:  ['#22c55e','#a3e635','#fde047','#f97316','#ef4444','#7f1d1d'],
-    viridis:  ['#440154','#31688e','#35b779','#90d743','#fde725','#ffffcc'],
-    mono:     ['#edf8fb','#b2e2e2','#66c2a4','#2ca25f','#006d2c','#00441b'],
-    rainbow:  ['#313695','#4575b4','#91cf60','#fee090','#fc8d59','#d73027']
+  const SPEED_BINS=[2,5,15,35,55];
+  const PALETTES={
+    coolwarm:['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027'],
+    traffic:['#22c55e','#a3e635','#fde047','#f97316','#ef4444','#7f1d1d'],
+    viridis:['#440154','#31688e','#35b779','#90d743','#fde725','#ffffcc'],
+    mono:['#edf8fb','#b2e2e2','#66c2a4','#2ca25f','#006d2c','#00441b'],
+    rainbow:['#313695','#4575b4','#91cf60','#fee090','#fc8d59','#d73027']
   };
-  const PALETTE_NAMES = {
-    coolwarm: 'Cool→Warm',
-    traffic:  'Traffic Light',
-    viridis:  'Viridis',
-    mono:     'Monochrome',
-    rainbow:  'Rainbow'
-  };
-  let paletteKey = 'coolwarm';
+  const PALETTE_NAMES={coolwarm:'Cool→Warm',traffic:'Traffic Light',viridis:'Viridis',mono:'Monochrome',rainbow:'Rainbow'};
 
-  function speedBin(v){
-    for (let i=0; i<SPEED_BINS.length; i++){
-      if (v < SPEED_BINS[i]) return i;
-    }
-    return SPEED_BINS.length;
-  }
+  function speedBin(v){ for(let i=0;i<SPEED_BINS.length;i++){ if(v<SPEED_BINS[i]) return i; } return SPEED_BINS.length; }
   function colorForSpeed(v){ return PALETTES[paletteKey][speedBin(v)]; }
-  function formatSpeedMph(v){
-    if (v == null || !isFinite(v)) return '0';
-    return (v*2.236936).toFixed(1); // m/s → mph
-  }
+  function formatMph(v){ if(v==null||!isFinite(v)) return '0'; return (v*2.236936).toFixed(1); }
 
-  // --- Legend
   function renderLegend(){
-    const pal = PALETTES[paletteKey];
-    let html = `<div><strong>Color scale</strong> (mph)</div>`;
-    for (let i=0; i<pal.length; i++){
-      const range = (i===0)
-        ? `< ${SPEED_BINS[0]}`
-        : (i===pal.length-1)
-          ? `> ${SPEED_BINS[SPEED_BINS.length-1]}`
-          : `${SPEED_BINS[i-1]}–${SPEED_BINS[i]}`;
+    const pal=PALETTES[paletteKey];
+    const fan = fanSVG(pal);
+    let html = `<div class="head"><div><strong>Color scale</strong> (mph)</div><button id="paletteBtn" title="Change colors">${fan}</button></div>`;
+    for(let i=0;i<pal.length;i++){
+      const range = (i===0)?`< ${SPEED_BINS[0]}`:(i===pal.length-1)?`> ${SPEED_BINS[SPEED_BINS.length-1]}`:`${SPEED_BINS[i-1]}–${SPEED_BINS[i]}`;
       html += `<div class="row"><span class="swatch" style="background:${pal[i]}"></span> <span>${range}</span></div>`;
     }
-    document.getElementById('legend').innerHTML = html;
+    const el=document.getElementById('legend'); el.innerHTML=html;
+    el.querySelector('#paletteBtn').addEventListener('click', openPaletteModal);
   }
-  renderLegend();
 
-  // --- Basemap toggle (Satellite on/off)
-  function applyBasemap(){
-    if (satToggle.checked) {
-      if (map.hasLayer(osm)) map.removeLayer(osm);
-      esriSat.addTo(map);
-    } else {
-      if (map.hasLayer(esriSat)) map.removeLayer(esriSat);
-      osm.addTo(map);
-    }
+  function fanSVG(pal){
+    const blades = pal.slice(0,5);
+    const parts = blades.map((c,i)=>{
+      const rot = -25 + i*12;
+      return `<rect x="9" y="3" rx="2" ry="2" width="8" height="14" fill="${c}" transform="rotate(${rot} 10 15) translate(${i*1} ${i*0.6})" />`;
+    }).join('');
+    return `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${parts}<circle cx="10" cy="16" r="2.2" fill="#111" stroke="${pal[4]}" stroke-width="0.6"/></svg>`;
   }
-  satToggle.addEventListener('change', applyBasemap);
-  applyBasemap();
 
-  // --- Export popover
-  function hideMenu(){ exportMenu.style.display = 'none'; }
-  function toggleMenu(){
-    exportMenu.style.display = (exportMenu.style.display === 'block') ? 'none' : 'block';
-  }
-  exportBtn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleMenu(); });
-  document.addEventListener('click', hideMenu);
-  function download(filename, content, type='text/plain'){
-    const blob = new Blob([content], {type});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click();
-    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
-  }
-  function toCSV(rows){
-    const header = ['time_iso','timestamp_ms','lat','lon','speed_mps','accuracy_m'];
-    return [header.join(',')].concat(rows.map(p => [
-      new Date(p.t).toISOString(), p.t, p.lat, p.lon, (p.speed??''), (p.acc??'')
-    ].join(','))).join('\n');
-  }
-  function toGPX(rows){
-    const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Speed-Color Map" xmlns="http://www.topografix.com/GPX/1/1">
-<trk><name>Speed-Color Track</name><trkseg>
-${rows.map(p => `  <trkpt lat="${p.lat}" lon="${p.lon}">
-    <time>${esc(new Date(p.t).toISOString())}</time>
-    ${Number.isFinite(p.speed)?`<extensions><speed>${p.speed.toFixed(2)}</speed></extensions>`:''}
-  </trkpt>`).join('\n')}
-</trkseg></trk></gpx>`;
-  }
-  exportCsvBtn.addEventListener('click', ()=>{ hideMenu(); download('track.csv', toCSV(points), 'text/csv'); });
-  exportGpxBtn.addEventListener('click', ()=>{ hideMenu(); download('track.gpx', toGPX(points), 'application/gpx+xml'); });
-
-  // --- Color wheel → modal
   function openPaletteModal(){
-    paletteList.innerHTML = '';
-    Object.keys(PALETTES).forEach(key => {
-      const row = document.createElement('div');
-      row.className = 'palette-row';
-      row.setAttribute('data-key', key);
-      const radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'palette';
-      radio.value = key;
-      radio.checked = (key === paletteKey);
-      const label = document.createElement('span');
-      label.textContent = PALETTE_NAMES[key];
-      const sw = document.createElement('div');
-      sw.className = 'swatches';
-      PALETTES[key].forEach(c => {
-        const s = document.createElement('span'); s.style.background = c; sw.appendChild(s);
-      });
-      row.appendChild(radio);
-      row.appendChild(label);
-      row.appendChild(sw);
-      row.addEventListener('click', () => {
-        paletteKey = key;
-        renderLegend();
-      });
+    paletteList.innerHTML='';
+    Object.keys(PALETTES).forEach(key=>{
+      const row=document.createElement('div'); row.className='palette-row';
+      const name=document.createElement('span'); name.textContent=PALETTE_NAMES[key];
+      const sw=document.createElement('div'); sw.className='swatches';
+      PALETTES[key].forEach(c=>{ const s=document.createElement('span'); s.style.background=c; sw.appendChild(s); });
+      row.appendChild(name); row.appendChild(sw);
+      row.addEventListener('click', ()=>{ paletteKey=key; renderLegend(); closePaletteModal(); });
       paletteList.appendChild(row);
     });
-    modalOverlay.style.display = 'block';
+    modalOverlay.style.display='block';
   }
-  function closePaletteModal(){ modalOverlay.style.display = 'none'; }
-
-  colorBtn.addEventListener('click', openPaletteModal);
+  function closePaletteModal(){ modalOverlay.style.display='none'; }
   closeModal.addEventListener('click', closePaletteModal);
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) closePaletteModal();
+  modalOverlay.addEventListener('click', e=>{ if(e.target===modalOverlay) closePaletteModal(); });
+
+  function hideMenu(){ exportMenu.style.display='none'; }
+  function toggleMenu(){ exportMenu.style.display=(exportMenu.style.display==='block')?'none':'block'; }
+  exportBtn.addEventListener('click', e=>{ e.stopPropagation(); toggleMenu(); });
+  document.addEventListener('click', hideMenu);
+
+  function download(filename, content, type='text/plain'){ const blob=new Blob([content],{type}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0); }
+  function toCSV(rows){ const header=['time_iso','timestamp_ms','lat','lon','speed_mps','accuracy_m'];
+    return [header.join(',')].concat(rows.map(p=>[new Date(p.t).toISOString(),p.t,p.lat,p.lon,(p.speed??''),(p.acc??'')].join(','))).join('\n'); }
+  function toGPX(rows){ const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Speed-Color Map" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Speed-Color Track</name><trkseg>
+${rows.map(p=>`<trkpt lat="${p.lat}" lon="${p.lon}"><time>${esc(new Date(p.t).toISOString())}</time>${Number.isFinite(p.speed)?`<extensions><speed>${p.speed.toFixed(2)}</speed></extensions>`:''}</trkpt>`).join('\n')}
+</trkseg></trk></gpx>`; }
+
+  document.getElementById('exportCsvBtn').addEventListener('click', ()=>{ hideMenu(); download('track.csv', toCSV(points), 'text/csv'); });
+  document.getElementById('exportGpxBtn').addEventListener('click', ()=>{ hideMenu(); download('track.gpx', toGPX(points), 'application/gpx+xml'); });
+
+  // NEW: Export PNG using leaflet-image
+  document.getElementById('exportPngBtn').addEventListener('click', ()=>{
+    hideMenu();
+    if (typeof window.leafletImage !== 'function') { return alert('Map export not available.'); }
+    window.leafletImage(map, function(err, canvas){
+      if (err || !canvas) { console.error(err); return; }
+      canvas.toBlob(blob=>{
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href=url; a.download='map.png';
+        document.body.appendChild(a); a.click();
+        setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+      });
+    });
   });
 
-  // --- Drawing and tracking
-  function placePosition(lat, lon, acc){
-    if (!posMarker) {
-      posMarker = L.circleMarker([lat, lon], { radius: 6, color:'#fff', weight:2, fillColor:'#4ade80', fillOpacity:0.9 }).addTo(layerGroup);
-      accCircle = L.circle([lat, lon], { radius: acc ?? 15, color:'#999', weight:1, opacity:0.5, fillOpacity:0.05 }).addTo(layerGroup);
-    } else {
-      posMarker.setLatLng([lat, lon]);
-      accCircle.setLatLng([lat, lon]).setRadius(acc ?? 15);
-    }
-    if (autoCenter) {
-      const targetZ = map.getZoom() < 15 ? 15 : map.getZoom();
-      map.setView([lat, lon], targetZ);
-    }
+  function updateButtons(){ if(running){ startBtn.style.display='none'; stopBtn.style.display=''; runDot.style.display='inline-block'; }
+    else { startBtn.style.display=''; stopBtn.style.display='none'; runDot.style.display='none'; } }
+  updateButtons(); speedEl.textContent='0';
+
+  function applyBasemap(){ if(satToggle.checked){ if(map.hasLayer(osm)) map.removeLayer(osm); esriSat.addTo(map); }
+    else { if(map.hasLayer(esriSat)) map.removeLayer(esriSat); osm.addTo(map); } }
+  satToggle.addEventListener('change', applyBasemap); applyBasemap();
+
+  function placePosition(lat,lon,acc){
+    if(!posMarker){ posMarker=L.circleMarker([lat,lon],{radius:6,color:'#fff',weight:2,fillColor:'#4ade80',fillOpacity:0.9}).addTo(layerGroup);
+      accCircle=L.circle([lat,lon],{radius:acc??15,color:'#999',weight:1,opacity:0.5,fillOpacity:0.05}).addTo(layerGroup);
+    } else { posMarker.setLatLng([lat,lon]); accCircle.setLatLng([lat,lon]).setRadius(acc??15); }
+    if(autoCenter){ const z=map.getZoom()<15?15:map.getZoom(); map.setView([lat,lon], z); }
   }
-  function haversine(a,b){
-    const R=6371000;
-    const dLat=(b.lat-a.lat)*Math.PI/180, dLon=(b.lon-a.lon)*Math.PI/180;
-    const lat1=a.lat*Math.PI/180, lat2=b.lat*Math.PI/180;
-    const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2);
-    return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2));
-  }
+  function haversine(a,b){ const R=6371000, toR=Math.PI/180; const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR;
+    const lat1=a.lat*toR, lat2=b.lat*toR; const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2);
+    return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2)); }
   function onPos(pos){
-    const { latitude, longitude, speed, accuracy } = pos.coords;
-    if (accuracy != null && accuracy > 5000) return; // skip very coarse fixes
-    const t = pos.timestamp;
-    const curr = {lat: latitude, lon: longitude, t};
-    placePosition(latitude, longitude, accuracy);
-
-    if (!last) {
-      last = curr;
-      points.push({t, lat: latitude, lon: longitude, speed: Math.max(speed??-1, -1), acc: accuracy});
-      return;
-    }
-
-    let v = (speed!=null && speed>=0) ? speed : haversine(last, curr) / ((t - last.t)/1000);
-    if (!isFinite(v) || v < 0) v = 0;
-    speedEl.textContent = formatSpeedMph(v);
-
-    const seg = L.polyline([[last.lat,last.lon],[curr.lat,curr.lon]], {
-      color: colorForSpeed(v), weight: 6, opacity: 0.95
-    });
-    layerGroup.addLayer(seg);
-
-    last = curr;
-    points.push({t, lat: latitude, lon: longitude, speed: v, acc: accuracy});
+    const { latitude, longitude, speed, accuracy } = pos.coords; if(accuracy!=null && accuracy>5000) return;
+    const t=pos.timestamp, curr={lat:latitude,lon:longitude,t}; placePosition(latitude,longitude,accuracy);
+    if(!last){ last=curr; points.push({t,lat:latitude,lon:longitude,speed:Math.max(speed??-1,-1),acc:accuracy}); return; }
+    let v=(speed!=null && speed>=0)?speed: haversine(last,curr)/((t-last.t)/1000); if(!isFinite(v)||v<0) v=0;
+    speedEl.textContent = formatMph(v);
+    const seg=L.polyline([[last.lat,last.lon],[curr.lat,curr.lon]],{color:colorForSpeed(v),weight:6,opacity:0.95}); layerGroup.addLayer(seg);
+    last=curr; points.push({t,lat:latitude,lon:longitude,speed:v,acc:accuracy});
   }
-  function onErr(err){
-    console.error(err);
-    showToast(err.message || 'Location error');
-    if (err && (err.code === 1 || /denied/i.test(err.message||''))) {
-      showToast('Enable Location: aA ▸ Website Settings ▸ Location ▸ Allow (Precise ON)');
-    }
-  }
+  function onErr(err){ console.error(err); showToast(err.message||'Location error');
+    if(err&&(err.code===1||/denied/i.test(err.message||''))){ showToast('Enable Location: aA ▸ Website Settings ▸ Location ▸ Allow (Precise ON)'); } }
+  function showToast(msg,ms=2200){ const el=toastEl; el.textContent=msg; el.style.display='block'; setTimeout(()=> el.style.display='none',ms); }
 
-  function start(){
-    if (!navigator.geolocation) return showToast('Geolocation not supported');
-    if (watchId !== null) return;
-    watchId = navigator.geolocation.watchPosition(onPos, onErr, {enableHighAccuracy:true, maximumAge:0, timeout:15000});
-    running = true; updateButtons();
-    showToast('Tracking started');
-  }
-  function stop(){
-    if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
-    running = false; updateButtons();
-    showToast('Tracking stopped');
-  }
-  function reset(){
-    stop();
-    last = null; points = [];
-    layerGroup.clearLayers();
-    posMarker = null; accCircle = null;
-    speedEl.textContent = '0';
-  }
+  function start(){ if(!navigator.geolocation) return showToast('Geolocation not supported'); if(watchId!==null) return;
+    watchId=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+    running=true; updateButtons(); showToast('Tracking started'); }
+  function stop(){ if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
+    running=false; updateButtons(); showToast('Tracking stopped'); }
+  function reset(){ stop(); last=null; points=[]; layerGroup.clearLayers(); posMarker=null; accCircle=null; speedEl.textContent='0'; }
+
   startBtn.addEventListener('click', start);
   stopBtn.addEventListener('click', stop);
   resetBtn.addEventListener('click', reset);
 
-  // Precise-first fix on load (center only, do NOT start)
-  async function getPreciseFix({targetAcc=100, maxWaitMs=20000} = {}){
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
-      let best=null, t0=Date.now();
-      const tryOnce=()=>{
-        navigator.geolocation.getCurrentPosition(
-          pos=>{
-            const acc=pos.coords.accuracy??Infinity;
-            if(!best||acc<(best.coords.accuracy??Infinity)) best=pos;
-            if(acc<=targetAcc) return resolve(pos);
-            if(Date.now()-t0<maxWaitMs) setTimeout(tryOnce,1000);
-            else resolve(best);
-          },
-          err=>{
-            if(Date.now()-t0<maxWaitMs) setTimeout(tryOnce,1000);
-            else reject(err);
-          },
-          {enableHighAccuracy:true,timeout:8000,maximumAge:0}
-        );
-      };
-      tryOnce();
-    });
-  }
-  (async()=>{
-    try{ const first=await getPreciseFix(); onPos(first); /* remain stopped */ }
-    catch(err){ onErr(err); }
-  })();
+  function getPreciseFix({targetAcc=100,maxWaitMs=20000}={}){ return new Promise((resolve,reject)=>{
+    if(!navigator.geolocation) return reject(new Error('Geolocation not supported')); let best=null, t0=Date.now();
+    const tryOnce=()=>{ navigator.geolocation.getCurrentPosition(
+      pos=>{ const acc=pos.coords.accuracy??Infinity; if(!best||acc<(best.coords.accuracy??Infinity)) best=pos;
+        if(acc<=targetAcc) return resolve(pos); if(Date.now()-t0<maxWaitMs) setTimeout(tryOnce,1000); else resolve(best); },
+      err=>{ if(Date.now()-t0<maxWaitMs) setTimeout(tryOnce,1000); else reject(err); },
+      {enableHighAccuracy:true,timeout:8000,maximumAge:0}); };
+    tryOnce(); }); }
+  (async()=>{ try{ const first=await getPreciseFix(); onPos(first); } catch(err){ onErr(err); } })();
+
+  renderLegend();
 })();
 </script>
 </body>
