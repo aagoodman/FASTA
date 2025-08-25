@@ -1,5 +1,5 @@
 // sw.js
-const CACHE = "fasta-v9";     // <-- bump this
+const CACHE = "fasta-v10";     // <-- bump this
 const ASSETS = [
   "./",
   "./abbyapp.html",
