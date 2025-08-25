@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1A5EB2" />
+  <title>FASTA</title>
+
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="icon" href="./icons/icon-192.png" sizes="192x192">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+  <style>
+    :root { --bg:#1A5EB2; --fg:#f5f5f7; --muted:#a3a3a3; }
+    html,body,#app{height:100%;margin:0;background:var(--bg);color:var(--fg);
+      font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    #map{position:absolute;inset:0}
+
+    /* Top bar */
+    #ui-top{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top) + 6px);
+      display:flex;gap:8px;padding:8px 12px;z-index:2000;align-items:center;flex-wrap:wrap}
+    .pill{display:inline-flex;align-items:center;gap:8px;border-radius:999px;
+      background:rgba(17,17,17,.68);padding:8px 12px;backdrop-filter:blur(8px);
+      border:1px solid rgba(255,255,255,.1)}
+    .btn{appearance:none;border:1px solid rgba(255,255,255,.15);background:#222;color:var(--fg);
+      border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer}
+    .btn.primary{background:#14532d;border-color:#1f7a47}
+    .btn.warn{background:#7a1f1f;border-color:#a33}
+    .metric{font-variant-numeric:tabular-nums}
+    .muted{color:var(--muted)}
+    .dot{width:10px;height:10px;border-radius:999px;background:#22c55e;display:none;
+      box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:pulse 2s infinite}
+    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}70%{box-shadow:0 0 0 10px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+
+    /* Legend */
+    #legend{position:fixed;bottom:16px;left:16px;background:rgba(17,17,17,.65);
+      border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;
+      backdrop-filter:blur(8px);z-index:1500;min-width:220px}
+    #legend .head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+    #legend .row{display:flex;align-items:center;gap:8px;margin:.25rem 0}
+    .swatch{width:24px;height:10px;border-radius:4px}
+    #paletteBtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;
+      background:#fff;border:1px solid #d9d9df;border-radius:8px;cursor:pointer}
+    #paletteBtn svg{width:20px;height:20px}
+
+    /* Export */
+    #exportIconWrap{position:fixed;top:calc(env(safe-area-inset-top) + 10px);right:12px;z-index:2200}
+    #exportBtn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+      background:#fff;border:1px solid rgba(0,0,0,.25);border-radius:6px;cursor:pointer;color:#222}
+    #exportBtn:hover{background:#f5f5f5}
+    #exportMenu{position:absolute;top:36px;right:0;background:#151515;border:1px solid #333;
+      border-radius:10px;padding:6px;display:none;min-width:160px}
+    #exportMenu button{width:100%;text-align:left;border:none;background:transparent;color:var(--fg);
+      padding:8px 10px;border-radius:8px;cursor:pointer}
+    #exportMenu button:hover{background:#222}
+
+    /* Locate */
+    .leaflet-bottom.leaflet-right .leaflet-control-locate{margin:0 10px 56px 0}
+    .leaflet-control-locate.leaflet-bar a{width:30px;height:30px;background:#fff;border:1px solid rgba(0,0,0,.25);
+      display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+    .leaflet-control-locate svg{width:16px;height:16px}
+
+    /* Splash */
+    #splash{position:fixed;inset:0;z-index:3000;display:none;background:#1A5EB2;padding:16px;text-align:center;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:auto}
+    #splash img{max-width:90%;max-height:68%;height:auto;width:auto;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+    #splash .controls{margin-top:14px;display:flex;flex-direction:column;gap:10px;align-items:center}
+
+    #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#222;border:1px solid #333;
+      color:#fff;padding:10px 14px;border-radius:12px;display:none;z-index:2400}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+
+  <!-- Top UI -->
+  <div id="ui-top">
+    <div class="pill" id="controls">
+      <button id="startBtn" class="btn primary">Start</button>
+      <button id="stopBtn" class="btn" style="display:none;">Stop</button>
+      <button id="resetBtn" class="btn warn">Reset</button>
+      <div id="runDot" class="dot"></div>
+    </div>
+    <div class="pill"><span class="muted">Speed</span> <span id="speed" class="metric">0</span> <span class="muted">mph</span></div>
+    <div class="pill"><label style="display:inline-flex;align-items:center;gap:6px;">
+      <input type="checkbox" id="satToggle"> Satellite</label></div>
+  </div>
+
+  <!-- Export -->
+  <div id="exportIconWrap">
+    <button id="exportBtn" title="Download">⇩</button>
+    <div id="exportMenu">
+      <button id="exportCsvBtn">Export CSV</button>
+      <button id="exportGpxBtn">Export GPX</button>
+      <button id="exportPngBtn">Export PNG (map)</button>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div id="legend"></div>
+
+  <!-- Splash -->
+  <div id="splash">
+    <img src="./icons/splash-1284x2778.png" alt="FASTA splash">
+    <div class="controls">
+      <label><input type="checkbox" id="dontShow"> Don’t show again</label>
+      <button id="dismissSplash" class="btn">Continue</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
+<script>
+(function(){
+  const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20});
+  const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20});
+  const map=L.map('map',{zoomControl:true,layers:[osm]});
+  map.setView([20,0],2);
+
+  // Locate button
+  const Locate=L.Control.extend({options:{position:'bottomright'},onAdd:function(){
+    const c=L.DomUtil.create('div','leaflet-control-locate leaflet-bar');
+    const a=L.DomUtil.create('a','',c); a.href="#"; a.title="Center on my location";
+    a.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
+      +'<circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/>'
+      +'<line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/>'
+      +'<line x1="19" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>';
+    L.DomEvent.on(a,'click',e=>{
+      L.DomEvent.stop(e);
+      if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(
+          pos=>map.flyTo([pos.coords.latitude,pos.coords.longitude],16,{duration:0.6}),
+          ()=>{}, {enableHighAccuracy:true,timeout:10000}
+        );
+      }
+    });
+    return c;
+  }});
+  map.addControl(new Locate());
+
+  const SPEED_BINS=[2,5,15,35,55];
+  const PALETTES={coolwarm:['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027']};
+  let paletteKey='coolwarm';
+
+  function renderLegend(){
+    const pal=PALETTES[paletteKey];
+    let html=`<div class="head"><div><strong>Color scale</strong> (mph)</div></div>`;
+    for(let i=0;i<pal.length;i++){
+      const range=(i===0)?`< ${SPEED_BINS[0]}`:(i===pal.length-1)?`> ${SPEED_BINS.at(-1)}`:`${SPEED_BINS[i-1]}–${SPEED_BINS[i]}`;
+      html+=`<div class="row"><span class="swatch" style="background:${pal[i]}"></span><span>${range}</span></div>`;
+    }
+    document.getElementById('legend').innerHTML=html;
+  }
+  renderLegend();
+
+  // UI refs
+  const startBtn=document.getElementById('startBtn'),stopBtn=document.getElementById('stopBtn'),resetBtn=document.getElementById('resetBtn');
+  const satToggle=document.getElementById('satToggle'),speedEl=document.getElementById('speed'),runDot=document.getElementById('runDot');
+  const exportBtn=document.getElementById('exportBtn'),exportMenu=document.getElementById('exportMenu'),toast=document.getElementById('toast');
+
+  // State
+  let running=false,watchId=null,last=null,points=[];
+  const layerGroup=L.layerGroup().addTo(map);
+  let posMarker=null,accCircle=null;
+
+  function placePosition(lat,lon,acc){
+    if(!posMarker){ posMarker=L.circleMarker([lat,lon],{radius:6,color:'#fff',weight:2,fillColor:'#4ade80',fillOpacity:0.9}).addTo(layerGroup);
+      accCircle=L.circle([lat,lon],{radius:acc??15,color:'#999',weight:1,opacity:0.5,fillOpacity:0.05}).addTo(layerGroup);
+    }else{ posMarker.setLatLng([lat,lon]); accCircle.setLatLng([lat,lon]).setRadius(acc??15); }
+  }
+  const R=6371000,toR=Math.PI/180;
+  function hav(a,b){const dLat=(b.lat-a.lat)*toR,dLon=(b.lon-a.lon)*toR;const s1=Math.sin(dLat/2),s2=Math.sin(dLon/2);return 2*R*Math.asin(Math.sqrt(s1*s1+Math.cos(a.lat*toR)*Math.cos(b.lat*toR)*s2*s2));}
+  function mph(x){return (x*2.236936).toFixed(1)}
+  function colorForSpeed(v){const pal=PALETTES[paletteKey];for(let i=0;i<SPEED_BINS.length;i++){if(v<SPEED_BINS[i])return pal[i];}return pal.at(-1);}
+  function showToast(t,ms=2000){toast.textContent=t;toast.style.display='block';setTimeout(()=>toast.style.display='none',ms);}
+
+  function onPos(pos){
+    const {latitude,longitude,speed,accuracy}=pos.coords;if(accuracy!=null&&accuracy>10000)return;
+    const t=pos.timestamp,curr={lat:latitude,lon:longitude,t};placePosition(latitude,longitude,accuracy);
+    if(!last){last=curr;speedEl.textContent=(speed!=null&&speed>=0)?mph(speed):'0';points.push({t,lat:latitude,lon:longitude,speed:Math.max(speed??0,0),acc:accuracy});return;}
+    let v=(speed!=null&&speed>=0)?speed:0;const dt=(t-last.t)/1000;if(v===0&&dt>0){const d=hav(last,curr);if(d>1.5)v=d/dt;}
+    if(!isFinite(v)||v<0)v=0;speedEl.textContent=mph(v);
+    layerGroup.addLayer(L.polyline([[last.lat,last.lon],[curr.lat,curr.lon]],{color:colorForSpeed(v),weight:6,opacity:.95}));
+    last=curr;points.push({t,lat:latitude,lon:longitude,speed:v,acc:accuracy});
+  }
+  function onErr(e){console.error(e);showToast(e?.message||'Location error');}
+
+  function start(){if(!navigator.geolocation)return showToast('Geolocation not supported');if(watchId!==null)return;
+    watchId=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+    running=true;startBtn.style.display='none';stopBtn.style.display='';runDot.style.display='inline-block';}
+  function stop(){if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+    running=false;startBtn.style.display='';stopBtn.style.display='none';runDot.style.display='none';}
+  function reset(){stop();last=null;points=[];layerGroup.clearLayers();posMarker=null;accCircle=null;speedEl.textContent='0';}
+  startBtn.addEventListener('click',start);stopBtn.addEventListener('click',stop);resetBtn.addEventListener('click',reset);
+
+  satToggle.addEventListener('change',()=>{if(satToggle.checked){if(map.hasLayer(osm))map.removeLayer(osm);esri.addTo(map);}else{if(map.hasLayer(esri))map.removeLayer(esri);osm.addTo(map);}});
+
+  // Export
+  function hideMenu(){exportMenu.style.display='none';}
+  exportBtn.addEventListener('click',e=>{e.stopPropagation();exportMenu.style.display=(exportMenu.style.display==='block')?'none':'block';});
+  document.addEventListener('click',hideMenu);
+  function toCSV(rows){const h=['time_iso','timestamp_ms','lat','lon','speed_mps','accuracy_m'];return[h.join(',')].concat(rows.map(p=>[new Date(p.t).toISOString(),p.t,p.lat,p.lon,(p.speed??''),(p.acc??'')].join(','))).join('\n');}
+  function toGPX(rows){const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');return `<?xml version="1.0"?><gpx version="1.1" creator="FASTA" xmlns="http://www.topografix.com/GPX/1/1"><trk><trkseg>${rows.map(p=>`<trkpt lat="${p.lat}" lon="${p.lon}"><time>${esc(new Date(p.t).toISOString())}</time></trkpt>`).join('')}</trkseg></trk></gpx>`;}
+  document.getElementById('exportCsvBtn').addEventListener('click',()=>{hideMenu();const b=new Blob([toCSV(points)],{type:'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='track.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),0);});
+  document.getElementById('exportGpxBtn').addEventListener('click',()=>{hideMenu();const b=new Blob([toGPX(points)],{type:'application/gpx+xml'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='track.gpx';a.click();setTimeout(()=>URL.revokeObjectURL(u),0);});
+ 
