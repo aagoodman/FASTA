@@ -58,10 +58,16 @@
     #exportMenu button:hover{background:#222}
 
     /* Locate */
-    .leaflet-bottom.leaflet-right .leaflet-control-locate{margin:0 10px 56px 0}
-    .leaflet-control-locate.leaflet-bar a{width:30px;height:30px;background:#fff;border:1px solid rgba(0,0,0,.25);
-      display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.25)}
-    .leaflet-control-locate svg{width:16px;height:16px}
+    /* Zoom box spacing bottom-right */
+.leaflet-control-zoom { margin: 0 10px 10px 0; }
+
+/* Locate button placed just above zoom and styled to match */
+.leaflet-bottom.leaflet-right .leaflet-control-locate { margin: 0 10px 56px 0; }
+.leaflet-control-locate.leaflet-bar a{
+  width:30px;height:30px;background:#fff;border:1px solid rgba(0,0,0,.25);
+  display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.25)
+}
+.leaflet-control-locate svg{ width:16px;height:16px;display:block; }
 
     /* Palette modal */
     #modalOverlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:2300}
@@ -148,7 +154,8 @@
   const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap',crossOrigin:'anonymous'});
   const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles &copy; Esri',crossOrigin:'anonymous'});
 
-  const map=L.map('map',{zoomControl:true,layers:[osm]});
+ const map = L.map('map',{ zoomControl:false, layers:[osm] });
+ L.control.zoom({ position: 'bottomright' }).addTo(map);
   map.setView([20,0],2);
 
   /* Locate control (above zoom) */
