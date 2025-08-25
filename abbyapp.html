@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <title>Speed-Color Map (mph, 6 bins)</title>
+  <title>Speed-Color Map (mph, 6 bins + Satellite)</title>
   <meta name="theme-color" content="#111111" />
   <link rel="preconnect" href="https://unpkg.com">
   <link rel="stylesheet"
@@ -19,7 +19,7 @@
       z-index:1000; align-items:center; flex-wrap:wrap; }
     .pill { display:inline-flex; align-items:center; gap:8px; border-radius:999px; background:rgba(17,17,17,.7);
       padding:8px 12px; backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08); }
-    .btn { appearance:none; border:1px solid #333; background:var(--btn); color:var(--fg);
+    .btn, select.btn { appearance:none; border:1px solid #333; background:var(--btn); color:var(--fg);
       border-radius:999px; padding:8px 12px; font-weight:600; cursor:pointer; }
     .btn:active { transform:translateY(1px); }
     .btn.primary { background:#14532d; border-color:#1f7a47;}
@@ -46,11 +46,13 @@
       <button id="exportCsvBtn" class="btn">Export CSV</button>
       <button id="exportGpxBtn" class="btn">Export GPX</button>
     </div>
+
     <div class="pill">
       <span>Speed:</span>
       <span id="speed" class="metric">—</span>
       <span>mph</span>
     </div>
+
     <div class="pill">
       <label for="paletteSelect">Colors</label>
       <select id="paletteSelect" class="btn">
@@ -61,24 +63,80 @@
         <option value="rainbow">Rainbow</option>
       </select>
     </div>
+
+    <div class="pill">
+      <label for="basemapSelect">Basemap</label>
+      <select id="basemapSelect" class="btn">
+        <option value="osm">Standard</option>
+        <option value="sat">Satellite</option>
+        <option value="ter">Terrain</option>
+      </select>
+      <label style="display:inline-flex;align-items:center;gap:6px;margin-left:6px;">
+        <input type="checkbox" id="labelsToggle"> Labels
+      </label>
+    </div>
   </div>
 
   <div id="legend"></div>
   <div id="toast"></div>
-  <div id="build">FASTA v4 (mph, 6 bins)</div>
+  <div id="build">FASTA v5 (mph, 6 bins, Satellite)</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function(){
-  // --- Base map
+  // --- Basemap layers (free) --------------------------------------
   const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     { maxZoom: 20, attribution: '&copy; OpenStreetMap' });
+
+  // Esri World Imagery (Satellite)
+  const esriSat = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 20, attribution: 'Tiles &copy; Esri' }
+  );
+
+  // Optional Esri labels overlay (place names/boundaries)
+  const esriLabels = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 20, attribution: 'Labels &copy; Esri' }
+  );
+
+  // OpenTopoMap (Terrain-like)
+  const openTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 17,
+    attribution: 'Map data: &copy; OSM, SRTM | Tiles: &copy; OpenTopoMap (CC-BY-SA)'
+  });
+
+  // Map init
   const map = L.map('map', { zoomControl: false, layers: [osm] });
   L.control.zoom({ position: 'bottomright' }).addTo(map);
+  // Optional layers control (desktop-style)
+  L.control.layers(
+    { 'OSM Standard': osm, 'Satellite (Esri)': esriSat, 'Terrain (OpenTopoMap)': openTopo },
+    { 'Labels (Esri overlay)': esriLabels },
+    { position: 'topright', collapsed: true }
+  ).addTo(map);
+
   map.setView([20, 0], 2);
 
-  // --- UI handles
+  // Basemap UI wiring
+  const basemapSel = document.getElementById('basemapSelect');
+  const labelsToggle = document.getElementById('labelsToggle');
+  function applyBasemap(){
+    // Remove all base layers, then add selected
+    [osm, esriSat, openTopo].forEach(l => { if (map.hasLayer(l)) map.removeLayer(l); });
+    if (basemapSel.value === 'sat') esriSat.addTo(map);
+    else if (basemapSel.value === 'ter') openTopo.addTo(map);
+    else osm.addTo(map);
+
+    // Labels overlay only makes sense on Satellite (but allow it anywhere if you like)
+    if (labelsToggle.checked) esriLabels.addTo(map);
+    else if (map.hasLayer(esriLabels)) map.removeLayer(esriLabels);
+  }
+  basemapSel.addEventListener('change', applyBasemap);
+  labelsToggle.addEventListener('change', applyBasemap);
+
+  // --- UI handles --------------------------------------------------
   const startBtn = document.getElementById('startBtn');
   const stopBtn  = document.getElementById('stopBtn');
   const resetBtn = document.getElementById('resetBtn');
@@ -88,11 +146,11 @@
   const toastEl  = document.getElementById('toast');
   const paletteSel = document.getElementById('paletteSelect');
 
-  // --- Tracking state
+  // --- Tracking state ---------------------------------------------
   let watchId = null, last = null, points = [];
   const layerGroup = L.layerGroup().addTo(map);
   let posMarker = null, accCircle = null;
-  let autoCenter = true;  // default ON
+  let autoCenter = true;  // keep you centered by default
 
   function showToast(msg, ms=2600){
     toastEl.textContent = msg;
@@ -100,8 +158,8 @@
     setTimeout(()=> toastEl.style.display='none', ms);
   }
 
-  // --- Speed bins (mph!)
-  const SPEED_BINS = [2, 5, 15, 35, 55]; // 6 bins total: <2, 2-5, 5-15, 15-35, 35-55, >55 mph
+  // --- Speed bins (mph, 6 bins) -----------------------------------
+  const SPEED_BINS = [2, 5, 15, 35, 55]; // => bins: <2, 2–5, 5–15, 15–35, 35–55, >55 mph
 
   const PALETTES = {
     coolwarm: ['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027'],
@@ -129,7 +187,7 @@
   }
 
   function renderLegend(){
-    const pal = PALETTES[paletteSel.value];
+    const pal = PALETTES[paletteSel.value || 'coolwarm'];
     let html = `<div><strong>Color scale</strong> (mph)</div>`;
     for (let i=0; i<pal.length; i++){
       const range = (i===0)
@@ -144,7 +202,7 @@
   renderLegend();
   paletteSel.addEventListener('change', renderLegend);
 
-  // --- Map drawing
+  // --- Map drawing -------------------------------------------------
   function placePosition(lat, lon, acc){
     if (!posMarker) {
       posMarker = L.circleMarker([lat, lon], { radius: 6, color:'#fff', weight:2, fillColor:'#4ade80', fillOpacity:0.9 }).addTo(layerGroup);
@@ -153,7 +211,10 @@
       posMarker.setLatLng([lat, lon]);
       accCircle.setLatLng([lat, lon]).setRadius(acc ?? 15);
     }
-    if (autoCenter) map.setView([lat, lon], map.getZoom() < 15 ? 15 : map.getZoom());
+    if (autoCenter) {
+      const targetZ = map.getZoom() < 15 ? 15 : map.getZoom();
+      map.setView([lat, lon], targetZ);
+    }
   }
 
   function haversine(a,b){
@@ -166,7 +227,7 @@
 
   function onPos(pos){
     const { latitude, longitude, speed, accuracy } = pos.coords;
-    if (accuracy != null && accuracy > 5000) return;
+    if (accuracy != null && accuracy > 5000) return; // skip very coarse fixes
     const t = pos.timestamp;
     const curr = {lat: latitude, lon: longitude, t};
     placePosition(latitude, longitude, accuracy);
@@ -190,6 +251,9 @@
   function onErr(err){
     console.error(err);
     showToast(err.message || 'Location error');
+    if (err && (err.code === 1 || /denied/i.test(err.message||''))) {
+      showToast('Enable Location: aA ▸ Website Settings ▸ Location ▸ Allow (Precise ON)');
+    }
   }
 
   function start(){
@@ -232,9 +296,10 @@ ${rows.map(p => `  <trkpt lat="${p.lat}" lon="${p.lon}">
   exportCsvBtn.addEventListener('click', ()=> download('track.csv', toCSV(points), 'text/csv'));
   exportGpxBtn.addEventListener('click', ()=> download('track.gpx', toGPX(points), 'application/gpx+xml'));
 
-  // Precise-first flow
+  // Precise-first flow on load
   async function getPreciseFix({targetAcc=100, maxWaitMs=20000} = {}){
     return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
       let best=null, t0=Date.now();
       const tryOnce=()=>{
         navigator.geolocation.getCurrentPosition(
@@ -255,6 +320,9 @@ ${rows.map(p => `  <trkpt lat="${p.lat}" lon="${p.lon}">
     try{ const first=await getPreciseFix(); onPos(first); start(); }
     catch(err){ onErr(err); }
   })();
+
+  // Apply initial basemap selection
+  applyBasemap();
 })();
 </script>
 </body>
