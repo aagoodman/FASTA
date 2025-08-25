@@ -1,25 +1,18 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-  <title>Speed-Color Map (Prototype)</title>
-  <meta name="theme-color" content="#111111">
-
-  <!-- PWA -->
-  <link rel="manifest" href="./manifest.json">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png">
-
-  <!-- Leaflet -->
+  <meta charset="utf-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>Speed-Color Map (mph, 6 bins)</title>
+  <meta name="theme-color" content="#111111" />
   <link rel="preconnect" href="https://unpkg.com">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
-    :root { --bg:#0b0b0c; --fg:#f5f5f7; --muted:#a3a3a3; --btn:#222; --accent:#4ade80; }
+    :root { --bg:#0b0b0c; --fg:#f5f5f7; --btn:#222; }
     html,body,#app { height:100%; margin:0; background:var(--bg); color:var(--fg);
-      font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+      font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
     #map { position:absolute; inset:0; }
     #ui { position:fixed; top:env(safe-area-inset-top); left:0; right:0; display:flex; gap:8px;
       padding:10px 12px; background:linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0));
@@ -27,7 +20,7 @@
     .pill { display:inline-flex; align-items:center; gap:8px; border-radius:999px; background:rgba(17,17,17,.7);
       padding:8px 12px; backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08); }
     .btn { appearance:none; border:1px solid #333; background:var(--btn); color:var(--fg);
-      border-radius:999px; padding:8px 12px; font-weight:600; }
+      border-radius:999px; padding:8px 12px; font-weight:600; cursor:pointer; }
     .btn:active { transform:translateY(1px); }
     .btn.primary { background:#14532d; border-color:#1f7a47;}
     .btn.warn { background:#7a1f1f; border-color:#a33; }
@@ -35,7 +28,7 @@
     #legend { position:fixed; bottom:16px; left:16px; background:rgba(17,17,17,.7);
       border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; backdrop-filter:blur(8px); z-index:1000;}
     #legend .row { display:flex; align-items:center; gap:8px; margin:.25rem 0; }
-    .swatch { width:18px; height:8px; border-radius:4px; }
+    .swatch { width:24px; height:10px; border-radius:4px; }
     #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#222; border:1px solid #333;
       color:#fff; padding:10px 14px; border-radius:12px; display:none; z-index:2000; }
     #build { position:fixed; right:8px; bottom:8px; font:12px/1.2 -apple-system,system-ui; opacity:.6; }
@@ -56,60 +49,50 @@
     <div class="pill">
       <span>Speed:</span>
       <span id="speed" class="metric">—</span>
-      <span id="unit">m/s</span>
+      <span>mph</span>
     </div>
     <div class="pill">
-      <label for="unitsSelect">Units</label>
-      <select id="unitsSelect" class="btn">
-        <option value="mps">m/s</option>
-        <option value="kmh">km/h</option>
-        <option value="mph">mph</option>
-        <option value="kn">kn</option>
+      <label for="paletteSelect">Colors</label>
+      <select id="paletteSelect" class="btn">
+        <option value="coolwarm">Cool→Warm</option>
+        <option value="traffic">Traffic Light</option>
+        <option value="viridis">Viridis</option>
+        <option value="mono">Monochrome</option>
+        <option value="rainbow">Rainbow</option>
       </select>
     </div>
   </div>
 
-  <div id="legend">
-    <div><strong>Color scale</strong> (by speed)</div>
-    <div class="row"><span class="swatch" style="background:#3b82f6;"></span> <span class="metric">&lt; 2 m/s (walk)</span></div>
-    <div class="row"><span class="swatch" style="background:#10b981;"></span> <span class="metric">2–8 m/s (jog/bike)</span></div>
-    <div class="row"><span class="swatch" style="background:#f59e0b;"></span> <span class="metric">8–22 m/s (city drive)</span></div>
-    <div class="row"><span class="swatch" style="background:#ef4444;"></span> <span class="metric">&gt; 22 m/s (highway/train)</span></div>
-  </div>
-
+  <div id="legend"></div>
   <div id="toast"></div>
-  <div id="build">FASTA build v3</div>
+  <div id="build">FASTA v4 (mph, 6 bins)</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function(){
-  // Map -------------------------------------------------------------
-  const map = L.map('map', { zoomControl: false });
-  const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 20,
-    attribution: '&copy; OpenStreetMap'
-  });
-  tiles.addTo(map);
+  // --- Base map
+  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { maxZoom: 20, attribution: '&copy; OpenStreetMap' });
+  const map = L.map('map', { zoomControl: false, layers: [osm] });
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-  map.setView([20, 0], 2); // show something immediately
+  map.setView([20, 0], 2);
 
-  // UI --------------------------------------------------------------
+  // --- UI handles
   const startBtn = document.getElementById('startBtn');
   const stopBtn  = document.getElementById('stopBtn');
   const resetBtn = document.getElementById('resetBtn');
   const exportCsvBtn = document.getElementById('exportCsvBtn');
   const exportGpxBtn = document.getElementById('exportGpxBtn');
   const speedEl  = document.getElementById('speed');
-  const unitEl   = document.getElementById('unit');
-  const unitsSel = document.getElementById('unitsSelect');
   const toastEl  = document.getElementById('toast');
+  const paletteSel = document.getElementById('paletteSelect');
 
-  let watchId = null;
-  let last = null;
-  let points = []; // {t, lat, lon, speed, acc}
+  // --- Tracking state
+  let watchId = null, last = null, points = [];
   const layerGroup = L.layerGroup().addTo(map);
   let posMarker = null, accCircle = null;
+  let autoCenter = true;  // default ON
 
   function showToast(msg, ms=2600){
     toastEl.textContent = msg;
@@ -117,32 +100,51 @@
     setTimeout(()=> toastEl.style.display='none', ms);
   }
 
-  const toRad = d => d*Math.PI/180;
-  function haversine(a,b){
-    const R=6371000;
-    const dLat=toRad(b.lat-a.lat), dLon=toRad(b.lon-a.lon);
-    const lat1=toRad(a.lat), lat2=toRad(b.lat);
-    const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2);
-    return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2));
+  // --- Speed bins (mph!)
+  const SPEED_BINS = [2, 5, 15, 35, 55]; // 6 bins total: <2, 2-5, 5-15, 15-35, 35-55, >55 mph
+
+  const PALETTES = {
+    coolwarm: ['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027'],
+    traffic:  ['#22c55e','#a3e635','#fde047','#f97316','#ef4444','#7f1d1d'],
+    viridis:  ['#440154','#31688e','#35b779','#90d743','#fde725','#ffffcc'],
+    mono:     ['#edf8fb','#b2e2e2','#66c2a4','#2ca25f','#006d2c','#00441b'],
+    rainbow:  ['#313695','#4575b4','#91cf60','#fee090','#fc8d59','#d73027']
+  };
+
+  function speedBin(v){
+    for (let i=0; i<SPEED_BINS.length; i++){
+      if (v < SPEED_BINS[i]) return i;
+    }
+    return SPEED_BINS.length;
   }
 
   function colorForSpeed(v){
-    if (v < 2) return '#3b82f6';
-    if (v < 8) return '#10b981';
-    if (v < 22) return '#f59e0b';
-    return '#ef4444';
+    const pal = PALETTES[paletteSel.value || 'coolwarm'];
+    return pal[speedBin(v)];
   }
 
-  function formatSpeed(v, units){
+  function formatSpeedMph(v){
     if (v == null || !isFinite(v)) return '—';
-    switch(units){
-      case 'kmh': return (v*3.6).toFixed(1);
-      case 'mph': return (v*2.236936).toFixed(1);
-      case 'kn':  return (v*1.943844).toFixed(1);
-      default:    return v.toFixed(1);
-    }
+    return (v*2.236936).toFixed(1); // m/s → mph
   }
 
+  function renderLegend(){
+    const pal = PALETTES[paletteSel.value];
+    let html = `<div><strong>Color scale</strong> (mph)</div>`;
+    for (let i=0; i<pal.length; i++){
+      const range = (i===0)
+        ? `< ${SPEED_BINS[0]}`
+        : (i===pal.length-1)
+          ? `> ${SPEED_BINS[SPEED_BINS.length-1]}`
+          : `${SPEED_BINS[i-1]}–${SPEED_BINS[i]}`;
+      html += `<div class="row"><span class="swatch" style="background:${pal[i]}"></span> <span>${range}</span></div>`;
+    }
+    document.getElementById('legend').innerHTML = html;
+  }
+  renderLegend();
+  paletteSel.addEventListener('change', renderLegend);
+
+  // --- Map drawing
   function placePosition(lat, lon, acc){
     if (!posMarker) {
       posMarker = L.circleMarker([lat, lon], { radius: 6, color:'#fff', weight:2, fillColor:'#4ade80', fillOpacity:0.9 }).addTo(layerGroup);
@@ -151,53 +153,25 @@
       posMarker.setLatLng([lat, lon]);
       accCircle.setLatLng([lat, lon]).setRadius(acc ?? 15);
     }
+    if (autoCenter) map.setView([lat, lon], map.getZoom() < 15 ? 15 : map.getZoom());
   }
 
-  function start(){
-    if (!navigator.geolocation) { showToast('Geolocation not supported'); return; }
-    if (watchId !== null) return;
-
-    watchId = navigator.geolocation.watchPosition(onPos, onErr, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15000
-    });
-    showToast('Tracking started');
-  }
-
-  function stop(){
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      watchId = null;
-      showToast('Tracking stopped');
-    }
-  }
-
-  function reset(){
-    stop();
-    last = null;
-    points = [];
-    layerGroup.clearLayers();
-    posMarker = null; accCircle = null;
-    speedEl.textContent = '—';
+  function haversine(a,b){
+    const R=6371000;
+    const dLat=(b.lat-a.lat)*Math.PI/180, dLon=(b.lon-a.lon)*Math.PI/180;
+    const lat1=a.lat*Math.PI/180, lat2=b.lat*Math.PI/180;
+    const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2);
+    return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2));
   }
 
   function onPos(pos){
     const { latitude, longitude, speed, accuracy } = pos.coords;
-
-    // Ignore extremely coarse fixes (e.g., IP-based multi-km)
-    if (accuracy != null && accuracy > 5000) {
-      console.warn('Skipping coarse fix with accuracy', accuracy, 'm');
-      return;
-    }
-
+    if (accuracy != null && accuracy > 5000) return;
     const t = pos.timestamp;
     const curr = {lat: latitude, lon: longitude, t};
-
     placePosition(latitude, longitude, accuracy);
 
     if (!last) {
-      map.setView([latitude, longitude], 16);
       last = curr;
       points.push({t, lat: latitude, lon: longitude, speed: Math.max(speed??-1, -1), acc: accuracy});
       return;
@@ -205,9 +179,7 @@
 
     let v = (speed!=null && speed>=0) ? speed : haversine(last, curr) / ((t - last.t)/1000);
     if (!isFinite(v) || v < 0) v = 0;
-
-    speedEl.textContent = formatSpeed(v, unitsSel.value);
-    unitEl.textContent  = unitsSel.options[unitsSel.selectedIndex].text;
+    speedEl.textContent = formatSpeedMph(v);
 
     const seg = L.polyline([[last.lat,last.lon],[curr.lat,curr.lon]], {color: colorForSpeed(v), weight: 6, opacity: 0.95});
     layerGroup.addLayer(seg);
@@ -217,41 +189,41 @@
 
   function onErr(err){
     console.error(err);
-    const msg = err && err.message ? err.message : 'Location error';
-    showToast(msg);
-    if (err && (err.code === 1 || /denied/i.test(msg))) {
-      showToast('Enable Location: aA ▸ Website Settings ▸ Location ▸ Allow (and Precise ON)');
-    }
+    showToast(err.message || 'Location error');
   }
+
+  function start(){
+    if (!navigator.geolocation) return showToast('Geolocation not supported');
+    if (watchId !== null) return;
+    watchId = navigator.geolocation.watchPosition(onPos, onErr, {enableHighAccuracy:true, maximumAge:0, timeout:15000});
+    showToast('Tracking started');
+  }
+  function stop(){ if (watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; showToast('Tracking stopped'); } }
+  function reset(){ stop(); last=null; points=[]; layerGroup.clearLayers(); posMarker=null; accCircle=null; speedEl.textContent='—'; }
 
   function download(filename, content, type='text/plain'){
     const blob = new Blob([content], {type});
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    const a = document.createElement('a'); a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click();
     setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
   }
-
   function toCSV(rows){
     const header = ['time_iso','timestamp_ms','lat','lon','speed_mps','accuracy_m'];
-    const lines = [header.join(',')];
-    for (const p of rows) {
-      lines.push([new Date(p.t).toISOString(), p.t, p.lat, p.lon, (p.speed ?? ''), (p.acc ?? '')].join(','));
-    }
-    return lines.join('\n');
+    return [header.join(',')].concat(rows.map(p => [
+      new Date(p.t).toISOString(), p.t, p.lat, p.lon, (p.speed??''), (p.acc??'')
+    ].join(','))).join('\n');
   }
-
   function toGPX(rows){
     const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const head = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Speed-Color Map" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
-  <trk><name>Speed-Color Track</name><trkseg>`;
-    const tail = `  </trkseg></trk></gpx>`;
-    const body = rows.map(p => `    <trkpt lat="${p.lat}" lon="${p.lon}">
-      <time>${esc(new Date(p.t).toISOString())}</time>
-      ${Number.isFinite(p.speed)?`<extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>${p.speed.toFixed(2)}</gpxtpx:speed></gpxtpx:TrackPointExtension></extensions>`:''}
-    </trkpt>`).join('\n');
-    return [head, body, tail].join('\n');
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Speed-Color Map" xmlns="http://www.topografix.com/GPX/1/1">
+<trk><name>Speed-Color Track</name><trkseg>
+${rows.map(p => `  <trkpt lat="${p.lat}" lon="${p.lon}">
+    <time>${esc(new Date(p.t).toISOString())}</time>
+    ${Number.isFinite(p.speed)?`<extensions><speed>${p.speed.toFixed(2)}</speed></extensions>`:''}
+  </trkpt>`).join('\n')}
+</trkseg></trk></gpx>`;
   }
 
   startBtn.addEventListener('click', start);
@@ -259,58 +231,30 @@
   resetBtn.addEventListener('click', reset);
   exportCsvBtn.addEventListener('click', ()=> download('track.csv', toCSV(points), 'text/csv'));
   exportGpxBtn.addEventListener('click', ()=> download('track.gpx', toGPX(points), 'application/gpx+xml'));
-  unitsSel.addEventListener('change', ()=>{});
 
-  // --- Precise-first flow on load: request permission, aim for <100 m, then start watch ---
+  // Precise-first flow
   async function getPreciseFix({targetAcc=100, maxWaitMs=20000} = {}){
     return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
-      let best = null;
-      const t0 = Date.now();
-      const tryOnce = () => {
+      let best=null, t0=Date.now();
+      const tryOnce=()=>{
         navigator.geolocation.getCurrentPosition(
-          pos => {
-            const acc = pos.coords.accuracy ?? Infinity;
-            if (!best || acc < (best.coords.accuracy ?? Infinity)) best = pos;
-            if (acc <= targetAcc) return resolve(pos);
-            if (Date.now() - t0 < maxWaitMs) setTimeout(tryOnce, 1000);
-            else resolve(best);
+          pos=>{
+            const acc=pos.coords.accuracy??Infinity;
+            if(!best||acc<(best.coords.accuracy??Infinity)) best=pos;
+            if(acc<=targetAcc) return resolve(pos);
+            if(Date.now()-t0<maxWaitMs) setTimeout(tryOnce,1000); else resolve(best);
           },
-          err => {
-            if (Date.now() - t0 < maxWaitMs) setTimeout(tryOnce, 1000);
-            else reject(err);
-          },
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+          err=>{ if(Date.now()-t0<maxWaitMs) setTimeout(tryOnce,1000); else reject(err); },
+          {enableHighAccuracy:true,timeout:8000,maximumAge:0}
         );
       };
       tryOnce();
     });
   }
-
-  (async () => {
-    try {
-      if (navigator.permissions && navigator.permissions.query) {
-        try {
-          const p = await navigator.permissions.query({ name: 'geolocation' });
-          if (p.state === 'denied') {
-            showToast('Location blocked: aA ▸ Website Settings ▸ Location ▸ Allow (Precise ON)');
-          }
-        } catch {}
-      }
-      const first = await getPreciseFix({ targetAcc: 100, maxWaitMs: 20000 });
-      onPos(first);  // center + marker immediately from good fix
-      start();       // then begin continuous tracking
-    } catch (err) {
-      onErr(err);
-    }
+  (async()=>{
+    try{ const first=await getPreciseFix(); onPos(first); start(); }
+    catch(err){ onErr(err); }
   })();
-
-  // Register service worker for PWA
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./service-worker.js').catch(console.warn);
-    });
-  }
 })();
 </script>
 </body>
