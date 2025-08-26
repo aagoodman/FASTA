@@ -50,17 +50,17 @@
       background:#fff;border:1px solid #d9d9df;border-radius:8px;cursor:pointer}
     #paletteBtn svg{width:20px;height:20px}
 
-    /* Export + Settings icons */
+    /* Icon bar (export + keep-awake) */
     #iconBar{position:fixed;top:calc(env(safe-area-inset-top) + 10px);right:12px;z-index:2200;display:flex;gap:8px}
     .iconBtn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
       background:#fff;border:1px solid rgba(0,0,0,.25);border-radius:6px;cursor:pointer;color:#222}
+    .iconBtn.active{background:#ffe9b3;border-color:#d6b24a} /* visual state for Keep Awake on */
     .iconBtn:hover{background:#f5f5f5}
     #exportMenu{position:absolute;top:36px;right:0;background:#151515;border:1px solid #333;
       border-radius:10px;padding:6px;display:none;min-width:200px}
     #exportMenu button{width:100%;text-align:left;border:none;background:transparent;color:var(--fg);
       padding:8px 10px;border-radius:8px;cursor:pointer}
     #exportMenu button:hover{background:#222}
-    #exportMenu hr{border:0;border-top:1px solid #333;margin:6px 0}
 
     /* Zoom bottom-right; Locate stacked above */
     .leaflet-control-zoom{margin:0 10px 10px 0}
@@ -81,25 +81,15 @@
     .swatches span{width:20px;height:10px;border-radius:3px;display:inline-block}
     .small{padding:6px 10px;border-radius:8px;border:1px solid #333;background:#202026;color:#fff;cursor:pointer}
 
-    /* Settings drawer */
-    #settingsOverlay{position:fixed;inset:0;display:none;background:rgba(0,0,0,.35);z-index:2350}
-    #settings{position:absolute;right:0;top:0;bottom:0;width:min(88vw,380px);background:#131316;color:#fff;
-      border-left:1px solid #2a2a31;box-shadow:-4px 0 24px rgba(0,0,0,.4);padding:14px 14px 18px 14px;
-      display:flex;flex-direction:column;gap:12px}
-    #settings h3{margin:0 0 6px 0}
-    .rowSetting{display:flex;align-items:center;justify-content:space-between;gap:10px}
-    select, .switch{background:#202026;border:1px solid #2f2f36;color:#fff;border-radius:8px;padding:8px}
-    .switch input{width:18px;height:18px}
-
     /* Splash */
     #splash{position:fixed;inset:0;z-index:3000;display:none;background:#1A5EB2;padding:16px;text-align:center;
       display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:auto}
     #splash img{max-width:90%;max-height:68%;height:auto;width:auto;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.3)}
     #splash .controls{margin-top:14px;display:flex;flex-direction:column;gap:10px;align-items:center}
 
-    /* Version badge & toast */
-    #version{position:fixed;left:10px;bottom:10px;background:rgba(17,17,17,.65);
-      border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:4px 8px;font-size:12px;z-index:1600}
+    /* Version badge (moved to bottom-right to avoid legend) */
+    #version{position:fixed;right:12px;bottom:12px;background:rgba(17,17,17,.65);
+      border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:4px 8px;font-size:12px;z-index:1400}
     #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#222;border:1px solid #333;
       color:#fff;padding:10px 14px;border-radius:12px;display:none;z-index:2400}
   </style>
@@ -121,11 +111,17 @@
       <input type="checkbox" id="satToggle"> Satellite</label></div>
   </div>
 
-  <!-- Icons (export + settings) -->
+  <!-- Icon bar: Export + Keep Awake -->
   <div id="iconBar">
-    <button id="settingsBtn" class="iconBtn" title="Settings" aria-label="Settings">
-      <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7zm8.94 3.06a7.9 7.9 0 0 0-.2-1.12l2.02-1.57-1.9-3.29-2.43.78a8 8 0 0 0-.97-.56l-.37-2.5h-3.8l-.37 2.5c-.33.15-.65.33-.96.54l-2.44-.77-1.9 3.28 2.02 1.57c-.08.37-.14.74-.2 1.12l-2.02 1.57 1.9 3.29 2.44-.78c.31.21.63.39.96.55l.37 2.49h3.8l.37-2.49c.33-.16.65-.34.97-.55l2.43.78 1.9-3.29-2.02-1.57z"/></svg>
+    <!-- Keep Awake toggle -->
+    <button id="awakeBtn" class="iconBtn" title="Keep screen awake (while tracking)">
+      <!-- coffee cup icon -->
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path fill="currentColor" d="M3 7h12v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7zm14 2h2.5a2.5 2.5 0 0 1 0 5H17V9zm0 2v2h2.5a1 1 0 0 0 0-2H17zM5 19h10v2H5zM8 3h2v2H8zm4 0h2v2h-2zM6 3h2v2H6z"/>
+      </svg>
     </button>
+
+    <!-- Export -->
     <div style="position:relative">
       <button id="exportBtn" class="iconBtn" title="Download" aria-haspopup="true" aria-expanded="false">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -136,10 +132,6 @@
         <button id="exportCsvBtn">Export CSV</button>
         <button id="exportGpxBtn">Export GPX</button>
         <button id="exportPngBtn">Export PNG (map)</button>
-        <hr>
-        <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;">
-          <input type="checkbox" id="wakeToggle"> Keep screen awake while tracking
-        </label>
       </div>
     </div>
   </div>
@@ -165,27 +157,6 @@
         <button id="closeModal" class="small">Close</button>
       </div>
     </div>
-  </div>
-
-  <!-- Settings drawer -->
-  <div id="settingsOverlay">
-    <aside id="settings">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <h3>Settings</h3>
-        <button id="closeSettings" class="small">Close</button>
-      </div>
-      <div class="rowSetting">
-        <label>Default palette</label>
-        <select id="defaultPalette"></select>
-      </div>
-      <div class="rowSetting">
-        <label>Keep screen awake while tracking</label>
-        <label class="switch"><input type="checkbox" id="wakeToggle2"></label>
-      </div>
-      <hr style="border:0;border-top:1px solid #2a2a31">
-      <button id="resetApp" class="small" title="Clear local data and caches">Reset app</button>
-      <div style="margin-top:auto;font-size:12px;color:#bbb">Changes are saved automatically.</div>
-    </aside>
   </div>
 
   <div id="version">FASTA v1.0.0</div>
@@ -214,7 +185,7 @@ if ('serviceWorker' in navigator) {
 <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '1.0.0'; // bump with sw.js VERSION
+  const APP_VERSION = '1.0.0'; // keep in sync with sw.js label if you like
   document.getElementById('version').textContent = 'FASTA v' + APP_VERSION;
 
   /* Base maps */
@@ -292,18 +263,25 @@ if ('serviceWorker' in navigator) {
   closeModal.addEventListener('click',()=>modalOverlay.style.display='none');
   modalOverlay.addEventListener('click',e=>{ if(e.target===modalOverlay) modalOverlay.style.display='none'; });
 
-  /* Icons: export + settings */
+  /* Icon bar logic */
   const exportBtn=document.getElementById('exportBtn'), exportMenu=document.getElementById('exportMenu');
   function hideMenu(){ exportMenu.style.display='none'; exportBtn.setAttribute('aria-expanded','false'); }
   exportBtn.addEventListener('click',e=>{ e.stopPropagation(); exportMenu.style.display=(exportMenu.style.display==='block')?'none':'block'; exportBtn.setAttribute('aria-expanded', exportMenu.style.display==='block'); });
   document.addEventListener('click', hideMenu);
 
-  const settingsBtn=document.getElementById('settingsBtn');
-  const settingsOverlay=document.getElementById('settingsOverlay');
-  const closeSettings=document.getElementById('closeSettings');
-  settingsBtn.addEventListener('click',()=>{ settingsOverlay.style.display='block'; });
-  closeSettings.addEventListener('click',()=>{ settingsOverlay.style.display='none'; });
-  settingsOverlay.addEventListener('click',e=>{ if(e.target===settingsOverlay) settingsOverlay.style.display='none'; });
+  // Keep Awake toggle (☕)
+  const WAKE_KEY='fasta_wake_pref';
+  let PREFER_WAKE_LOCK = localStorage.getItem(WAKE_KEY) === '1';
+  const awakeBtn=document.getElementById('awakeBtn');
+  function reflectAwake(){ awakeBtn.classList.toggle('active', PREFER_WAKE_LOCK); }
+  reflectAwake();
+  awakeBtn.addEventListener('click', ()=>{
+    PREFER_WAKE_LOCK = !PREFER_WAKE_LOCK;
+    localStorage.setItem(WAKE_KEY, PREFER_WAKE_LOCK ? '1' : '0');
+    reflectAwake();
+    showToast(PREFER_WAKE_LOCK ? 'Keep-awake ON (while tracking)' : 'Keep-awake OFF');
+    if (!PREFER_WAKE_LOCK) releaseWakeLock();
+  });
 
   /* Export helpers with timestamped filenames */
   function ts(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`; }
@@ -323,44 +301,6 @@ if ('serviceWorker' in navigator) {
         setTimeout(()=>URL.revokeObjectURL(url),0);
       });
     });
-  });
-
-  /* Settings: wake lock + default palette + reset */
-  const WAKE_KEY='fasta_wake_pref', DEF_PAL_KEY='fasta_def_palette';
-  let PREFER_WAKE_LOCK = localStorage.getItem(WAKE_KEY) === '1';
-  const wakeToggle=document.getElementById('wakeToggle');
-  const wakeToggle2=document.getElementById('wakeToggle2');
-  [wakeToggle,wakeToggle2].forEach(t=>{
-    if(!t) return;
-    t.checked = PREFER_WAKE_LOCK;
-    t.addEventListener('change', ()=>{
-      PREFER_WAKE_LOCK = t.checked;
-      [wakeToggle,wakeToggle2].forEach(x=>{ if(x && x!==t) x.checked = t.checked; });
-      localStorage.setItem(WAKE_KEY, PREFER_WAKE_LOCK ? '1' : '0');
-      if (!PREFER_WAKE_LOCK) releaseWakeLock();
-    });
-  });
-
-  const defaultPalette=document.getElementById('defaultPalette');
-  defaultPalette.innerHTML = Object.keys(PALETTES).map(k=>`<option value="${k}">${k}</option>`).join('');
-  const savedPal = localStorage.getItem(DEF_PAL_KEY);
-  if (savedPal && PALETTES[savedPal]) { paletteKey = savedPal; }
-  defaultPalette.value = paletteKey;
-  defaultPalette.addEventListener('change', ()=>{
-    if (PALETTES[defaultPalette.value]) {
-      paletteKey = defaultPalette.value; localStorage.setItem(DEF_PAL_KEY, paletteKey); renderLegend();
-    }
-  });
-
-  document.getElementById('resetApp').addEventListener('click', async ()=>{
-    try{
-      localStorage.clear();
-      if ('caches' in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map(k=>caches.delete(k)));
-      }
-    }catch{}
-    location.reload();
   });
 
   /* Tracking + Smart accuracy + Wake Lock */
@@ -467,8 +407,7 @@ if ('serviceWorker' in navigator) {
   /* URL actions / deep links */
   const q=new URLSearchParams(location.search);
   const qpPalette=q.get('palette');
-  if(qpPalette && PALETTES[qpPalette]){ paletteKey=qpPalette; localStorage.setItem(DEF_PAL_KEY, paletteKey); }
-  renderLegend();
+  if(qpPalette && PALETTES[qpPalette]){ paletteKey=qpPalette; renderLegend(); }
   if(localStorage.getItem(SPLASH_KEY) !== '1'){ splash.style.display='flex'; }
   else { centerOnce(); }
   if(q.get('open')==='export'){ window.addEventListener('load',()=>{ document.getElementById('exportMenu').style.display='block'; }); }
