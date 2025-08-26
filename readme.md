@@ -1,6 +1,6 @@
 # FASTA
 
-**FASTA** is a lightweight web app that tracks your path and colors it by speed. created by Abby Schwartz &  Alyssa Goodman for glue solutions, inc.
+**FASTA** is a lightweight web app that tracks your path and colors it by speed. Created by Abby Schwartz &  Alyssa Goodman for glue solutions, inc.
 
 🌐 Live app: [https://aagoodman.github.io/FASTA/](https://aagoodman.github.io/FASTA/)
 
