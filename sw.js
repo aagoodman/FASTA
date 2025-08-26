@@ -1,5 +1,5 @@
 // --- FASTA service worker (safe + update-friendly) ---
-const VERSION = 'fasta-v1.0.0';       // ⬅️ bump this on each release
+const VERSION = 'fasta-v1.0.1';       // ⬅️ bump this on each release
 const STATIC_CACHE  = `static-${VERSION}`;
 const RUNTIME_TILES = 'tiles-runtime';
 
