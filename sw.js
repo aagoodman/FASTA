@@ -1,9 +1,9 @@
 // --- FASTA service worker (safe + update-friendly) ---
-const VERSION = 'fasta-v1.0.0';            // bump to force refresh
+const VERSION = 'fasta-v1.0.0';       // ⬅️ bump this on each release
 const STATIC_CACHE  = `static-${VERSION}`;
 const RUNTIME_TILES = 'tiles-runtime';
 
-// Precache the core app shell (no third-party tiles here)
+// Precache the core app shell (keep this list small & deterministic)
 const ASSETS = [
   './',
   './index.html',
@@ -13,16 +13,14 @@ const ASSETS = [
   './icons/icon-512.png',
   './icons/icon-1024.png',
   './icons/splash-1284x2778.png',
-  // Leaflet (safe to cache)
+  // Leaflet libs (safe to cache)
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/leaflet-image/leaflet-image.js'
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(STATIC_CACHE).then((c) => c.addAll(ASSETS))
-  );
+  e.waitUntil(caches.open(STATIC_CACHE).then((c) => c.addAll(ASSETS)));
   self.skipWaiting();
 });
 
@@ -39,8 +37,8 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-// simple helper to limit runtime cache size
-async function trimCache(cacheName, maxEntries = 120) {
+// small helper to cap runtime tile cache
+async function trimCache(cacheName, maxEntries = 200) {
   const c = await caches.open(cacheName);
   const keys = await c.keys();
   const extra = keys.length - maxEntries;
@@ -56,22 +54,30 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       fetch(request)
         .then((res) => {
-          const clone = res.clone();
-          caches.open(STATIC_CACHE).then((c) => c.put('./index.html', clone));
+          // keep a fresh copy of index.html
+          caches.open(STATIC_CACHE).then((c) => c.put('./index.html', res.clone()));
           return res;
         })
-        .catch(() => caches.match('./index.html').then(r => r || caches.match('./offline.html')))
+        .catch(() =>
+          caches.match('./index.html').then(r => r || caches.match('./offline.html'))
+        )
     );
     return;
   }
 
-  // 2) Static assets we precached: cache-first
-  if (ASSETS.some(a => url.href.endsWith(a.replace('./','')) || url.href === new URL(a, self.registration.scope).href || url.href === a)) {
+  // 2) Static precached assets: cache-first
+  if (
+    ASSETS.some(a =>
+      url.href === new URL(a, self.registration.scope).href ||
+      url.href.endsWith(a.replace('./', '')) ||
+      url.href === a
+    )
+  ) {
     e.respondWith(caches.match(request).then(res => res || fetch(request)));
     return;
   }
 
-  // 3) Map tiles (OpenStreetMap / Esri): runtime cache with cap
+  // 3) Map tiles: runtime cache (limited), cache-first after first hit
   const isTile =
     url.hostname.endsWith('tile.openstreetmap.org') ||
     url.hostname.endsWith('arcgisonline.com');
@@ -83,19 +89,18 @@ self.addEventListener('fetch', (e) => {
       if (hit) return hit;
       try {
         const res = await fetch(request, { mode: 'cors' });
-        // Opaque responses are okay; still cache to allow offline re-view
         cache.put(request, res.clone());
         trimCache(RUNTIME_TILES, 200);
         return res;
       } catch {
-        // no tile available; just fail silently (map will show gaps)
+        // fail silently on tiles
         return new Response('', { status: 504 });
       }
     })());
     return;
   }
 
-  // 4) Default: network-first, fall back to cache if present
+  // 4) Default: network-first with cache fallback
   e.respondWith(
     fetch(request).catch(() => caches.match(request))
   );
