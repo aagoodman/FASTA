@@ -36,7 +36,7 @@
       box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:pulse 2s infinite}
     @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}70%{box-shadow:0 0 0 10px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
 
-    /* Legend (compact) */
+    /* Legend */
     #legend{
       position:fixed;bottom:16px;left:16px;background:rgba(17,17,17,.65);
       border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:8px 10px;
@@ -73,7 +73,7 @@
 
     /* Palette modal */
     #modalOverlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:2300}
-    #modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#16161a;color:#fff;
+    #modal{position:absolute;left:50%;top:50%;transform:translate(-50%, -50%);background:#16161a;color:#fff;
       border:1px solid #2a2a31;border-radius:14px;width:min(92vw,420px);padding:14px}
     .palette-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;cursor:pointer}
     .palette-row:hover{background:#1f1f25}
@@ -181,40 +181,39 @@ if ('serviceWorker' in navigator) {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
 <script src="https://unpkg.com/nosleep.js@0.12.0/dist/NoSleep.min.js"></script>
-<!-- Single-source version numbers -->
 <script src="./version.js"></script>
 
 <script>
 (function(){
-  /* ====== Version on splash (from version.js) ====== */
+  /* ====== Version on splash ====== */
   const verEl = document.getElementById('appVersion');
   if (verEl && typeof FASTA_RELEASE !== 'undefined') {
     verEl.textContent = 'Version ' + FASTA_RELEASE;
   }
 
   /* ====== Config ====== */
-  const SPEED_BINS_MPH = [2, 5, 15, 35, 55]; // mph bins
+  const SPEED_BINS_MPH = [2,5,15,35,55];
 
-  // Filtering knobs (relaxed for short, slow walks)
-  const MAX_ACCURACY_M   = 60;    // discard worse fixes
-  const MIN_MOVE_M       = 1.5;   // base jitter guard (was 3)
-  const MAX_SEGMENT_M    = 250;   // absurd hop -> pending/drop
-  const MAX_SPEED_MPS    = 25;    // ~56 mph cap
+  // Filtering knobs (looser to ensure drawing on short walks)
+  const MAX_ACCURACY_M   = 60;
+  const MIN_MOVE_M       = 1.0;         // base jitter guard
+  const MAX_SEGMENT_M    = 250;
+  const MAX_SPEED_MPS    = 25;
 
-  // Accuracy-aware jitter (distance threshold considering fix accuracy)
-  const ACC_JITTER_FACTOR = 0.4;  // was 0.6 (looser)
+  // Accuracy-aware jitter threshold: max(2m, 0.6 * (acc_prev + acc_curr))
+  const JITTER_SCALE     = 0.6;
+  const JITTER_FLOOR_M   = 2.0;
 
-  // Two-hit confirmation for big jumps
-  const PENDING_MAX_DT_MS = 4000; // window for confirmation
-  const PENDING_NEAR_M    = 45;   // corroboration distance (slightly looser)
+  // Two-hit confirmation (kept but more permissive)
+  const PENDING_MAX_DT_MS = 5000;
+  const PENDING_NEAR_M    = 60;
 
-  // NEW: accumulate tiny accepted moves; draw once we exceed this total
-  const DRAW_AFTER_ACCUM_M = 8;   // draw a segment after ~8 m of small moves
+  // Accumulate tiny moves; draw once we exceed this
+  const DRAW_AFTER_ACCUM_M = 4;
 
-  /* ====== Base maps ====== */
+  /* ====== Basemaps ====== */
   const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap',crossOrigin:'anonymous'});
   const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles &copy; Esri',crossOrigin:'anonymous'});
-
   const map=L.map('map',{zoomControl:false,layers:[osm]});
   L.control.zoom({position:'bottomright'}).addTo(map);
   map.setView([20,0],2);
@@ -283,7 +282,7 @@ if ('serviceWorker' in navigator) {
   closeModal.addEventListener('click',()=>modalOverlay.style.display='none');
   modalOverlay.addEventListener('click',e=>{ if(e.target===modalOverlay) modalOverlay.style.display='none'; });
 
-  /* ====== Export & UI bits ====== */
+  /* ====== Export ====== */
   const exportBtn=document.getElementById('exportBtn'), exportMenu=document.getElementById('exportMenu');
   function hideMenu(){ exportMenu.style.display='none'; exportBtn.setAttribute('aria-expanded','false'); }
   exportBtn.addEventListener('click',e=>{ e.stopPropagation(); exportMenu.style.display=(exportMenu.style.display==='block')?'none':'block'; exportBtn.setAttribute('aria-expanded', exportMenu.style.display==='block'); });
@@ -353,7 +352,6 @@ if ('serviceWorker' in navigator) {
   let hiAcc=true, stillSince=null;
   const STILL_SPEED=0.5, STILL_TIME=20000; // m/s and ms
 
-  // accumulate small accepted moves; draw when this passes threshold
   let accumSmall = 0;
 
   const R=6371000,toR=Math.PI/180;
@@ -367,29 +365,15 @@ if ('serviceWorker' in navigator) {
     } else { posMarker.setLatLng([lat,lon]); accCircle.setLatLng([lat,lon]).setRadius(acc??15); }
   }
 
-  /* light smoothing: median-of-3 speeds (m/s) */
+  /* median-of-3 speed (m/s) */
   const speedBuf=[];
-  function median3Push(v){
-    speedBuf.push(v);
-    if(speedBuf.length>3) speedBuf.shift();
-    const arr=[...speedBuf].sort((a,b)=>a-b);
-    return arr[Math.floor(arr.length/2)];
-  }
-
-  /* tiny coord smoother for plotting only */
-  const coordBuf=[];
-  function median3Coord(lat, lon){
-    coordBuf.push({lat, lon});
-    if(coordBuf.length>3) coordBuf.shift();
-    const lats = coordBuf.map(p=>p.lat).sort((a,b)=>a-b);
-    const lons = coordBuf.map(p=>p.lon).sort((a,b)=>a-b);
-    const i = Math.floor((coordBuf.length-1)/2);
-    return { lat: lats[i], lon: lons[i] };
-  }
+  function med3(v){ speedBuf.push(v); if(speedBuf.length>3) speedBuf.shift(); const a=[...speedBuf].sort((x,y)=>x-y); return a[Math.floor(a.length/2)]; }
+  /* tiny coord median for plotting only */
+  const coordBuf=[]; function med3Coord(lat,lon){ coordBuf.push({lat,lon}); if(coordBuf.length>3) coordBuf.shift();
+    const lats=coordBuf.map(p=>p.lat).sort((a,b)=>a-b), lons=coordBuf.map(p=>p.lon).sort((a,b)=>a-b); const i=Math.floor((coordBuf.length-1)/2); return {lat:lats[i],lon:lons[i]}; }
 
   function colorForSpeed(v_mps){
-    const pal=PALETTES[paletteKey];
-    const v_mph = mph(v_mps);
+    const pal=PALETTES[paletteKey]; const v_mph=mph(v_mps);
     for(let i=0;i<SPEED_BINS_MPH.length;i++){ if(v_mph < SPEED_BINS_MPH[i]) return pal[i]; }
     return pal.at(-1);
   }
@@ -404,8 +388,7 @@ if ('serviceWorker' in navigator) {
     });
   }
 
-  let pending = null;  // candidate jump awaiting confirmation
-  let lastAcc = null;  // accuracy of last accepted fix
+  let pending=null, lastAcc=null;
 
   function onPos(pos){
     const { latitude, longitude, speed, accuracy } = pos.coords;
@@ -418,40 +401,35 @@ if ('serviceWorker' in navigator) {
 
     // Smart accuracy switch
     const vRaw = (Number.isFinite(speed) && speed >= 0) ? speed : 0;
-    if (vRaw < STILL_SPEED) {
-      if (stillSince==null) stillSince = t;
-      if (hiAcc && t - stillSince > STILL_TIME) setWatcher(false);
-    } else {
-      stillSince = null;
-      if (!hiAcc) setWatcher(true);
-    }
+    if (vRaw < STILL_SPEED) { if (stillSince==null) stillSince=t; if (hiAcc && t-stillSince>STILL_TIME) setWatcher(false); }
+    else { stillSince=null; if (!hiAcc) setWatcher(true); }
 
     if (!last) {
       last = { lat: raw.lat, lon: raw.lon, t: raw.t };
       lastDrawn = last;
       lastAcc = raw.acc;
-      const vMed = median3Push(vRaw);
+      const vMed = med3(vRaw);
       speedEl.textContent = mph(vMed).toFixed(1);
       points.push({ t, lat: raw.lat, lon: raw.lon, speed: vMed, acc: raw.acc });
       return;
     }
 
-    const dFromLast  = hav(last, raw);
-    const dFromDrawn = hav(lastDrawn, raw);
-    const dt = Math.max((t - last.t) / 1000, 0.001);
-    let vv   = (Number.isFinite(speed) && speed >= 0) ? speed : dFromLast/dt;
+    const dLast   = hav(last, raw);
+    const dDrawn  = hav(lastDrawn, raw);
+    const dt      = Math.max((t - last.t) / 1000, 0.001);
+    let vv        = (Number.isFinite(speed) && speed >= 0) ? speed : dLast/dt;
 
-    // 1) Accuracy-aware jitter guard
-    const jitter = Math.max(MIN_MOVE_M, ACC_JITTER_FACTOR * ((lastAcc ?? 30) + raw.acc));
-    if (dFromLast < jitter) {
-      // accept fix, update speed label, but don't draw yet
-      const vMed = median3Push(Math.max(vv,0));
+    // Accuracy-aware jitter threshold (loose)
+    const jitter = Math.max(JITTER_FLOOR_M, JITTER_SCALE * ((lastAcc ?? 30) + raw.acc));
+
+    // If move is small, accept but defer drawing; accumulate and draw when enough distance builds up
+    if (dLast < jitter) {
+      const vMed = med3(Math.max(vv,0));
       speedEl.textContent = mph(vMed).toFixed(1);
 
-      accumSmall += dFromLast;
+      accumSmall += dLast;
       if (accumSmall >= DRAW_AFTER_ACCUM_M) {
-        // draw from lastDrawn -> current (smoothed)
-        const sm = median3Coord(raw.lat, raw.lon);
+        const sm = med3Coord(raw.lat, raw.lon);
         layerGroup.addLayer(L.polyline([[lastDrawn.lat,lastDrawn.lon],[sm.lat,sm.lon]],{
           color: colorForSpeed(vMed), weight:6, opacity:.95
         }));
@@ -466,13 +444,10 @@ if ('serviceWorker' in navigator) {
       return;
     }
 
-    // 2) Obvious spikes
-    if (dFromLast > MAX_SEGMENT_M || vv > MAX_SPEED_MPS) {
-      pending = { pt: raw, t, d: dFromLast, v: vv };
-      return;
-    }
+    // Obvious spikes -> stage as pending
+    if (dLast > MAX_SEGMENT_M || vv > MAX_SPEED_MPS) { pending = { pt: raw, t, d: dLast, v: vv }; return; }
 
-    // 3) Two-hit confirmation
+    // Two-hit confirmation (more permissive)
     if (pending) {
       const age = t - pending.t;
       const d2  = hav(pending.pt, raw);
@@ -482,7 +457,7 @@ if ('serviceWorker' in navigator) {
         acceptAndDraw(raw, vv);
         return;
       } else if (age > PENDING_MAX_DT_MS) {
-        pending = null;
+        pending = null; // drop pending; proceed with current
       }
     }
 
@@ -492,12 +467,10 @@ if ('serviceWorker' in navigator) {
 
   function acceptAndDraw(raw, vv){
     if (!isFinite(vv) || vv < 0) vv = 0;
-    const vMed = median3Push(vv);
+    const vMed = med3(vv);
     speedEl.textContent = mph(vMed).toFixed(1);
 
-    // Plot with tiny coord median (visual only)
-    const sm = median3Coord(raw.lat, raw.lon);
-
+    const sm = med3Coord(raw.lat, raw.lon);
     layerGroup.addLayer(L.polyline([[lastDrawn.lat,lastDrawn.lon],[sm.lat,sm.lon]],{
       color: colorForSpeed(vMed), weight:6, opacity:.95
     }));
