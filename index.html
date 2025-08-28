@@ -112,13 +112,13 @@
   <!-- Icon bar: Keep Awake + Export -->
   <div id="iconBar">
     <button id="awakeBtn" class="iconBtn" title="Keep screen awake (while tracking)">
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-        <path fill="currentColor" d="M3 7h12v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7zm14 2h2.5a2.5 2.5 0 0 1 0 5H17V9zm0 2v2h2.5a1 1 0 0 0 0-2H17zM5 19h10v2H5zM8 3h2v2H8zm4 0h2v2h-2zM6 3h2v2H6z"/>
-      </svg>
+      <!-- cup -->
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 7h12v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7zm14 2h2.5a2.5 2.5 0 0 1 0 5H17V9zm0 2v2h2.5a1 1 0 0 0 0-2H17zM5 19h10v2H5zM8 3h2v2H8zm4 0h2v2h-2zM6 3h2v2H6z"/></svg>
     </button>
 
     <div style="position:relative">
       <button id="exportBtn" class="iconBtn" title="Download" aria-haspopup="true" aria-expanded="false">
+        <!-- download -->
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
           <path fill="currentColor" d="M5 20h14a1 1 0 0 0 1-1v-2h-2v1H6v-1H4v2a1 1 0 0 0 1 1zm6-17a1 1 0 0 1 1 1v8.6l2.3-2.3 1.4 1.4L12 16.4l-4.7-4.7 1.4-1.4L11 12.6V4a1 1 0 0 1 1-1z"/>
         </svg>
@@ -136,18 +136,17 @@
 
   <!-- Splash -->
   <div id="splash">
-  <img src="./icons/splash-1284x2778.png" alt="FASTA splash">
-  <div class="controls">
-    <label><input type="checkbox" id="dontShow"> Don’t show again</label>
-    <button id="dismissSplash" class="btn">Continue</button>
+    <img src="./icons/splash-1284x2778.png" alt="FASTA splash">
+    <div class="controls">
+      <label><input type="checkbox" id="dontShow"> Don’t show again</label>
+      <button id="dismissSplash" class="btn">Continue</button>
+    </div>
+    <div id="appVersion" style="margin-top:10px;font-size:12px;opacity:.8;">Version 1.0.1</div>
+    <div style="margin-top:8px;font-size:12px;">
+      <a href="./privacy.md" style="color:#eef;text-decoration:underline;">Privacy</a> ·
+      <a href="./terms.md" style="color:#eef;text-decoration:underline;">Terms</a>
+    </div>
   </div>
-  <div id="appVersion" style="margin-top:10px;font-size:12px;opacity:.8;"></div>
-  
-  <div style="margin-top:8px;font-size:12px;">
-    <a href="./privacy.md" style="color:#eef;text-decoration:underline;">Privacy</a> ·
-    <a href="./terms.md" style="color:#eef;text-decoration:underline;">Terms</a>
-  </div>
-</div>
 
   <!-- Palette modal -->
   <div id="modalOverlay">
@@ -183,22 +182,29 @@ if ('serviceWorker' in navigator) {
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
+<!-- iOS keep-awake fallback -->
+<script src="https://unpkg.com/nosleep.js@0.12.0/dist/NoSleep.min.js"></script>
+
 <script>
 (function(){
-  const APP_VERSION = '1.0.0'; // shown on splash only
-  const appVersionEl = document.getElementById('appVersion');
-  if (appVersionEl) appVersionEl.textContent = 'Version ' + APP_VERSION;
+  /* ====== Config ====== */
+  const SPEED_BINS_MPH = [2, 5, 15, 35, 55]; // legend & coloring bins (mph)
+  const MAX_ACCURACY_M = 60;   // ignore points with worse accuracy
+  const MIN_MOVE_M     = 3;    // ignore tiny jitter when nearly still
+  const MAX_SEGMENT_M  = 250;  // drop absurd long hops
+  const MAX_SPEED_MPS  = 25;   // ~56 mph
 
-  /* Base maps */
+  const APP_VERSION = '1.0.1';
+
+  /* ====== Base maps ====== */
   const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap',crossOrigin:'anonymous'});
   const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles &copy; Esri',crossOrigin:'anonymous'});
 
-  /* Map & zoom controls */
   const map=L.map('map',{zoomControl:false,layers:[osm]});
   L.control.zoom({position:'bottomright'}).addTo(map);
   map.setView([20,0],2);
 
-  /* Locate control above zoom */
+  /* Locate control */
   const Locate=L.Control.extend({options:{position:'bottomright'},onAdd:function(){
     const c=L.DomUtil.create('div','leaflet-control-locate leaflet-bar');
     const a=L.DomUtil.create('a','',c); a.href="#"; a.title="Center on my location";
@@ -219,8 +225,7 @@ if ('serviceWorker' in navigator) {
   }});
   map.addControl(new Locate());
 
-  /* Legend + palettes */
-  const SPEED_BINS=[2,5,15,35,55];
+  /* ====== Palettes & legend ====== */
   const PALETTES={
     coolwarm:['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027'],
     traffic:['#22c55e','#a3e635','#fde047','#f97316','#ef4444','#7f1d1d'],
@@ -241,7 +246,7 @@ if ('serviceWorker' in navigator) {
       <button id="paletteBtn" title="Change colors">${fanSVG(pal)}</button>
     </div>`;
     for(let i=0;i<pal.length;i++){
-      const range=(i===0)?`< ${SPEED_BINS[0]}`:(i===pal.length-1)?`> ${SPEED_BINS.at(-1)}`:`${SPEED_BINS[i-1]}–${SPEED_BINS[i]}`;
+      const range=(i===0)?`< ${SPEED_BINS_MPH[0]}`:(i===pal.length-1)?`> ${SPEED_BINS_MPH.at(-1)}`:`${SPEED_BINS_MPH[i-1]}–${SPEED_BINS_MPH[i]}`;
       html+=`<div class="row"><span class="swatch" style="background:${pal[i]}"></span><span>${range}</span></div>`;
     }
     const el=document.getElementById('legend'); el.innerHTML=html;
@@ -249,14 +254,13 @@ if ('serviceWorker' in navigator) {
   }
   renderLegend();
 
-  /* Palette modal */
   const modalOverlay=document.getElementById('modalOverlay'), paletteList=document.getElementById('paletteList'), closeModal=document.getElementById('closeModal');
   function openPalette(){
     paletteList.innerHTML='';
     Object.entries(PALETTES).forEach(([key,arr])=>{
       const row=document.createElement('div'); row.className='palette-row';
       row.innerHTML=`<span>${key}</span><div class="swatches">${arr.map(c=>`<span style="background:${c}"></span>`).join('')}</div>`;
-      row.addEventListener('click',()=>{ paletteKey=key; renderLegend(); modalOverlay.style.display='none';});
+      row.addEventListener('click',()=>{ paletteKey=key; renderLegend(); });
       paletteList.appendChild(row);
     });
     modalOverlay.style.display='block';
@@ -264,27 +268,12 @@ if ('serviceWorker' in navigator) {
   closeModal.addEventListener('click',()=>modalOverlay.style.display='none');
   modalOverlay.addEventListener('click',e=>{ if(e.target===modalOverlay) modalOverlay.style.display='none'; });
 
-  /* Export menu */
+  /* ====== Export & UI bits ====== */
   const exportBtn=document.getElementById('exportBtn'), exportMenu=document.getElementById('exportMenu');
   function hideMenu(){ exportMenu.style.display='none'; exportBtn.setAttribute('aria-expanded','false'); }
   exportBtn.addEventListener('click',e=>{ e.stopPropagation(); exportMenu.style.display=(exportMenu.style.display==='block')?'none':'block'; exportBtn.setAttribute('aria-expanded', exportMenu.style.display==='block'); });
   document.addEventListener('click', hideMenu);
 
-  /* Keep Awake toggle */
-  const WAKE_KEY='fasta_wake_pref';
-  let PREFER_WAKE_LOCK = localStorage.getItem(WAKE_KEY) === '1';
-  const awakeBtn=document.getElementById('awakeBtn');
-  function reflectAwake(){ awakeBtn.classList.toggle('active', PREFER_WAKE_LOCK); }
-  reflectAwake();
-  awakeBtn.addEventListener('click', ()=>{
-    PREFER_WAKE_LOCK = !PREFER_WAKE_LOCK;
-    localStorage.setItem(WAKE_KEY, PREFER_WAKE_LOCK ? '1' : '0');
-    reflectAwake();
-    showToast(PREFER_WAKE_LOCK ? 'Keep-awake ON (while tracking)' : 'Keep-awake OFF');
-    if (!PREFER_WAKE_LOCK) releaseWakeLock();
-  });
-
-  /* Export helpers */
   function ts(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`; }
   function download(name,content,type='text/plain'){ const b=new Blob([content],{type}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(u),0); }
   function toCSV(rows){ const h=['time_iso','timestamp_ms','lat','lon','speed_mps','accuracy_m']; return [h.join(',')].concat(rows.map(p=>[new Date(p.t).toISOString(),p.t,p.lat,p.lon,(p.speed??''),(p.acc??'')].join(','))).join('\n'); }
@@ -304,41 +293,77 @@ if ('serviceWorker' in navigator) {
     });
   });
 
-  /* Tracking + Smart accuracy + Wake Lock */
+  /* ====== Keep Awake (with iOS fallback) ====== */
+  const WAKE_KEY='fasta_wake_pref';
+  let PREFER_WAKE_LOCK = localStorage.getItem(WAKE_KEY) === '1';
+  const awakeBtn=document.getElementById('awakeBtn');
+  let wakeLock=null, noSleep=null;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  function reflectAwake(){ awakeBtn.classList.toggle('active', PREFER_WAKE_LOCK); }
+  reflectAwake();
+
+  async function lockScreen(){
+    try{
+      if(!isIOS && 'wakeLock' in navigator){
+        wakeLock = await navigator.wakeLock.request('screen');
+        document.addEventListener('visibilitychange', async ()=>{
+          if(document.visibilityState==='visible' && !wakeLock && PREFER_WAKE_LOCK){
+            try{ wakeLock=await navigator.wakeLock.request('screen'); }catch{}
+          }else if(document.visibilityState!=='visible'){ releaseWakeLock(); }
+        });
+      }else{
+        if(!noSleep) noSleep = new NoSleep();
+        try{ await noSleep.enable(); }catch{}
+      }
+    }catch{}
+  }
+  function releaseWakeLock(){ try{ wakeLock?.release(); }catch{} wakeLock=null; try{ noSleep?.disable(); }catch{} }
+
+  awakeBtn.addEventListener('click', ()=>{
+    PREFER_WAKE_LOCK = !PREFER_WAKE_LOCK;
+    localStorage.setItem(WAKE_KEY, PREFER_WAKE_LOCK ? '1' : '0');
+    reflectAwake();
+    showToast(PREFER_WAKE_LOCK ? 'Keep-awake ON (while tracking)' : 'Keep-awake OFF');
+    if (!PREFER_WAKE_LOCK) releaseWakeLock();
+  });
+
+  /* ====== Tracking ====== */
   const startBtn=document.getElementById('startBtn'), stopBtn=document.getElementById('stopBtn'), resetBtn=document.getElementById('resetBtn');
   const satToggle=document.getElementById('satToggle'), speedEl=document.getElementById('speed'), runDot=document.getElementById('runDot');
-  let running=false, watchId=null, last=null, points=[];
   const layerGroup=L.layerGroup().addTo(map);
   let posMarker=null, accCircle=null;
 
-  // Wake Lock
-  let wakeLock=null;
-  async function lockScreen(){ try{ if('wakeLock' in navigator){ wakeLock=await navigator.wakeLock.request('screen');
-      document.addEventListener('visibilitychange', async () => {
-        if (document.visibilityState==='visible' && wakeLock===null && PREFER_WAKE_LOCK) {
-          try{ wakeLock=await navigator.wakeLock.request('screen'); }catch{}
-        } else if (document.visibilityState!=='visible') {
-          releaseWakeLock();
-        }
-      }); } }catch{} }
-  function releaseWakeLock(){ try{ wakeLock?.release(); }catch{} wakeLock=null; }
+  let running=false, watchId=null, last=null, points=[];
+  let hiAcc=true, stillSince=null;
+  const STILL_SPEED=0.5, STILL_TIME=20000; // m/s and ms
+
+  const R=6371000,toR=Math.PI/180;
+  function hav(a,b){ const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR, lat1=a.lat*toR, lat2=b.lat*toR;
+    const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2); return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2)); }
+  const mphFromMps=v=>v*2.23693629;
 
   function placePosition(lat,lon,acc){
     if(!posMarker){ posMarker=L.circleMarker([lat,lon],{radius:6,color:'#fff',weight:2,fillColor:'#4ade80',fillOpacity:0.9}).addTo(layerGroup);
       accCircle=L.circle([lat,lon],{radius:acc??15,color:'#999',weight:1,opacity:0.5,fillOpacity:0.05}).addTo(layerGroup);
     } else { posMarker.setLatLng([lat,lon]); accCircle.setLatLng([lat,lon]).setRadius(acc??15); }
   }
-  const R=6371000,toR=Math.PI/180;
-  function hav(a,b){ const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR, lat1=a.lat*toR, lat2=b.lat*toR;
-    const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2); return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2)); }
-  function mph(x){ return (x*2.236936).toFixed(1); }
-  function colorForSpeed(v){ const pal=PALETTES[paletteKey]; for(let i=0;i<SPEED_BINS.length;i++){ if(v<SPEED_BINS[i]) return pal[i]; } return pal.at(-1); }
 
-  // Smart accuracy state
-  let hiAcc = true;
-  let stillSince = null;
-  const STILL_SPEED = 0.5;   // m/s
-  const STILL_TIME  = 20000; // 20s
+  /* light smoothing: median-of-3 speeds (m/s) */
+  const speedBuf=[];
+  function median3Push(v){
+    speedBuf.push(v);
+    if(speedBuf.length>3) speedBuf.shift();
+    const arr=[...speedBuf].sort((a,b)=>a-b);
+    return arr[Math.floor(arr.length/2)];
+  }
+
+  function colorForSpeed(v_mps){
+    const v_mph = mphFromMps(v_mps);
+    const pal=PALETTES[paletteKey];
+    for(let i=0;i<SPEED_BINS_MPH.length;i++){ if(v_mph < SPEED_BINS_MPH[i]) return pal[i]; }
+    return pal.at(-1);
+  }
 
   function setWatcher(high){
     if (watchId!==null) { navigator.geolocation.clearWatch(watchId); watchId=null; }
@@ -351,12 +376,17 @@ if ('serviceWorker' in navigator) {
   }
 
   function onPos(pos){
-    const {latitude,longitude,speed,accuracy}=pos.coords; if(accuracy!=null && accuracy>10000) return;
-    const t=pos.timestamp, curr={lat:latitude,lon:longitude,t}; placePosition(latitude,longitude,accuracy);
+    const { latitude, longitude, speed, accuracy } = pos.coords;
+    if (accuracy != null && accuracy > MAX_ACCURACY_M) return;
+
+    const t=pos.timestamp;
+    const curr={lat:latitude,lon:longitude,t};
+    placePosition(latitude,longitude,accuracy);
+
+    const vRaw = (Number.isFinite(speed) && speed >= 0) ? speed : 0;
 
     // Smart accuracy switch
-    const v = (Number.isFinite(speed) && speed >= 0) ? speed : 0;
-    if (v < STILL_SPEED) {
+    if (vRaw < STILL_SPEED) {
       if (stillSince==null) stillSince = t;
       if (hiAcc && t - stillSince > STILL_TIME) { setWatcher(false); }
     } else {
@@ -364,33 +394,70 @@ if ('serviceWorker' in navigator) {
       if (!hiAcc) { setWatcher(true); }
     }
 
-    if(!last){ last=curr; speedEl.textContent=(v>0)?mph(v):'0'; points.push({t,lat:latitude,lon:longitude,speed:Math.max(v,0),acc:accuracy}); return; }
-    let vv=v; const dt=(t-last.t)/1000; if(vv===0 && dt>0){ const d=hav(last,curr); if(d>1.5) vv=d/dt; }
-    if(!isFinite(vv)||vv<0) vv=0; speedEl.textContent=mph(vv);
-    layerGroup.addLayer(L.polyline([[last.lat,last.lon],[curr.lat,curr.lon]],{color:colorForSpeed(vv),weight:6,opacity:.95}));
-    last=curr; points.push({t,lat:latitude,lon:longitude,speed:vv,acc:accuracy});
+    if(!last){
+      const vMed = median3Push(vRaw);
+      speedEl.textContent = mphFromMps(vMed).toFixed(1);
+      points.push({t,lat:latitude,lon:longitude,speed:vMed,acc:accuracy});
+      last=curr;
+      return;
+    }
+
+    const d  = hav(last,curr);
+    const dt = Math.max((t-last.t)/1000, 0.001);
+    let vv   = (Number.isFinite(speed) && speed >= 0) ? speed : d/dt;
+
+    // jitter guard
+    if (d < MIN_MOVE_M) {
+      const vMed = median3Push(Math.max(vv,0));
+      speedEl.textContent = mphFromMps(vMed).toFixed(1);
+      last = curr;
+      points.push({t,lat:latitude,lon:longitude,speed:vMed,acc:accuracy});
+      return;
+    }
+
+    // spike guards
+    if (d > MAX_SEGMENT_M || vv > MAX_SPEED_MPS) {
+      return; // drop sample
+    }
+
+    if (!isFinite(vv) || vv < 0) vv = 0;
+    const vMed = median3Push(vv);
+
+    speedEl.textContent = mphFromMps(vMed).toFixed(1);
+    layerGroup.addLayer(L.polyline([[last.lat,last.lon],[curr.lat,curr.lon]],{
+      color: colorForSpeed(vMed), weight:6, opacity:.95
+    }));
+
+    last=curr;
+    points.push({t,lat:latitude,lon:longitude,speed:vMed,acc:accuracy});
   }
+
   function onErr(e){ console.error(e); showToast(e?.message||'Location error'); }
   function showToast(t,ms=2000){ const el=document.getElementById('toast'); el.textContent=t; el.style.display='block'; setTimeout(()=>el.style.display='none',ms); }
 
+  /* controls */
   async function start(){
     if(!navigator.geolocation) return showToast('Geolocation not supported');
     if(watchId!==null) return;
     setWatcher(true);
     running=true; startBtn.style.display='none'; stopBtn.style.display=''; runDot.style.display='inline-block';
-    if (PREFER_WAKE_LOCK) await lockScreen();
+    if (localStorage.getItem(WAKE_KEY)==='1') await lockScreen();
   }
   function stop(){
     if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
     running=false; startBtn.style.display=''; stopBtn.style.display='none'; runDot.style.display='none';
-    releaseWakeLock(); stillSince=null;
+    stillSince=null; releaseWakeLock();
   }
   function reset(){ stop(); last=null; points=[]; layerGroup.clearLayers(); posMarker=null; accCircle=null; speedEl.textContent='0'; }
+
   document.getElementById('startBtn').addEventListener('click',start);
   document.getElementById('stopBtn').addEventListener('click',stop);
   document.getElementById('resetBtn').addEventListener('click',reset);
 
-  satToggle.addEventListener('change',()=>{ if(satToggle.checked){ if(map.hasLayer(osm)) map.removeLayer(osm); esri.addTo(map); } else { if(map.hasLayer(esri)) map.removeLayer(esri); osm.addTo(map); } });
+  document.getElementById('satToggle').addEventListener('change', (e)=>{
+    if(e.target.checked){ if(map.hasLayer(osm)) map.removeLayer(osm); esri.addTo(map); }
+    else { if(map.hasLayer(esri)) map.removeLayer(esri); osm.addTo(map); }
+  });
 
   /* Splash + initial center */
   const SPLASH_KEY='fasta_hide_splash';
@@ -398,7 +465,6 @@ if ('serviceWorker' in navigator) {
   function centerOnce(){ if(!navigator.geolocation) return; navigator.geolocation.getCurrentPosition(
     p=>{ map.setView([p.coords.latitude,p.coords.longitude],16); placePosition(p.coords.latitude,p.coords.longitude,p.coords.accuracy); },
     ()=>{}, { enableHighAccuracy:true, timeout:8000 }); }
-
   if (dismissSplash) dismissSplash.addEventListener('click', ()=>{
     if (dontShow && dontShow.checked) localStorage.setItem(SPLASH_KEY,'1');
     splash.style.display='none';
@@ -407,10 +473,8 @@ if ('serviceWorker' in navigator) {
 
   /* URL actions */
   const q=new URLSearchParams(location.search);
-  const qpPalette=q.get('palette');
-  if(qpPalette && PALETTES[qpPalette]){ paletteKey=qpPalette; renderLegend(); }
-  if(localStorage.getItem(SPLASH_KEY) !== '1'){ splash.style.display='flex'; }
-  else { centerOnce(); }
+  const qpPalette=q.get('palette'); if(qpPalette && PALETTES[qpPalette]){ paletteKey=qpPalette; renderLegend(); }
+  if(localStorage.getItem(SPLASH_KEY) !== '1'){ splash.style.display='flex'; } else { centerOnce(); }
   if(q.get('open')==='export'){ window.addEventListener('load',()=>{ document.getElementById('exportMenu').style.display='block'; }); }
   if(q.get('action')==='start'){ window.addEventListener('load',()=>{ start(); }); }
 
