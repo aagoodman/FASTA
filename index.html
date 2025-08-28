@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#1A5EB2" />
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -139,7 +139,7 @@
       <label><input type="checkbox" id="dontShow"> Don’t show again</label>
       <button id="dismissSplash" class="btn">Continue</button>
     </div>
-    <div id="appVersion" style="margin-top:10px;font-size:12px;opacity:.8;">Version 1.0.3</div>
+    <div id="appVersion" style="margin-top:10px;font-size:12px;opacity:.8;"></div>
     <div style="margin-top:8px;font-size:12px;">
       <a href="./privacy.md" style="color:#eef;text-decoration:underline;">Privacy</a> ·
       <a href="./terms.md" style="color:#eef;text-decoration:underline;">Terms</a>
@@ -180,28 +180,36 @@ if ('serviceWorker' in navigator) {
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
-<!-- iOS keep-awake fallback -->
 <script src="https://unpkg.com/nosleep.js@0.12.0/dist/NoSleep.min.js"></script>
+<!-- Single-source version numbers -->
+<script src="./version.js"></script>
 
 <script>
 (function(){
-  /* ====== Config ====== */
-  const SPEED_BINS_MPH = [2, 5, 15, 35, 55]; // legend & coloring bins (mph)
+  /* ====== Version on splash (from version.js) ====== */
+  const verEl = document.getElementById('appVersion');
+  if (verEl && typeof FASTA_RELEASE !== 'undefined') {
+    verEl.textContent = 'Version ' + FASTA_RELEASE;
+  }
 
-  // Filtering knobs
+  /* ====== Config ====== */
+  const SPEED_BINS_MPH = [2, 5, 15, 35, 55]; // mph bins
+
+  // Filtering knobs (relaxed for short, slow walks)
   const MAX_ACCURACY_M   = 60;    // discard worse fixes
-  const MIN_MOVE_M       = 3;     // base jitter guard
-  const MAX_SEGMENT_M    = 250;   // absurd hop -> discard
+  const MIN_MOVE_M       = 1.5;   // base jitter guard (was 3)
+  const MAX_SEGMENT_M    = 250;   // absurd hop -> pending/drop
   const MAX_SPEED_MPS    = 25;    // ~56 mph cap
 
   // Accuracy-aware jitter (distance threshold considering fix accuracy)
-  const ACC_JITTER_FACTOR = 0.6;  // fraction of (acc_prev + acc_curr)
+  const ACC_JITTER_FACTOR = 0.4;  // was 0.6 (looser)
 
   // Two-hit confirmation for big jumps
-  const PENDING_MAX_DT_MS = 4000; // time window for confirmation
-  const PENDING_NEAR_M    = 35;   // corroboration distance
+  const PENDING_MAX_DT_MS = 4000; // window for confirmation
+  const PENDING_NEAR_M    = 45;   // corroboration distance (slightly looser)
 
-  const APP_VERSION = '1.0.3';
+  // NEW: accumulate tiny accepted moves; draw once we exceed this total
+  const DRAW_AFTER_ACCUM_M = 8;   // draw a segment after ~8 m of small moves
 
   /* ====== Base maps ====== */
   const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap',crossOrigin:'anonymous'});
@@ -317,7 +325,7 @@ if ('serviceWorker' in navigator) {
         document.addEventListener('visibilitychange', async ()=>{
           if(document.visibilityState==='visible' && !wakeLock && PREFER_WAKE_LOCK){
             try{ wakeLock=await navigator.wakeLock.request('screen'); }catch{}
-          }else if(document.visibilityState!=='visible'){ releaseWakeLock(); }
+          }else if(document.visibilityState!=='visible'){ try{ wakeLock?.release(); }catch{} wakeLock=null; }
         });
       }else{
         if(!noSleep) noSleep = new NoSleep();
@@ -331,7 +339,7 @@ if ('serviceWorker' in navigator) {
     PREFER_WAKE_LOCK = !PREFER_WAKE_LOCK;
     localStorage.setItem(WAKE_KEY, PREFER_WAKE_LOCK ? '1' : '0');
     reflectAwake();
-    showToast(PREFER_WAKE_LOCK ? 'Keep-awake ON (while tracking)' : 'Keep-awake OFF');
+    toast(PREFER_WAKE_LOCK ? 'Keep-awake ON (while tracking)' : 'Keep-awake OFF');
     if (!PREFER_WAKE_LOCK) releaseWakeLock();
   });
 
@@ -341,14 +349,17 @@ if ('serviceWorker' in navigator) {
   const layerGroup=L.layerGroup().addTo(map);
   let posMarker=null, accCircle=null;
 
-  let running=false, watchId=null, last=null, points=[];
+  let running=false, watchId=null, last=null, lastDrawn=null, points=[];
   let hiAcc=true, stillSince=null;
   const STILL_SPEED=0.5, STILL_TIME=20000; // m/s and ms
+
+  // accumulate small accepted moves; draw when this passes threshold
+  let accumSmall = 0;
 
   const R=6371000,toR=Math.PI/180;
   function hav(a,b){ const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR, lat1=a.lat*toR, lat2=b.lat*toR;
     const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2); return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2)); }
-  const mphFromMps=v=>v*2.23693629;
+  const mph=v=>v*2.23693629;
 
   function placePosition(lat,lon,acc){
     if(!posMarker){ posMarker=L.circleMarker([lat,lon],{radius:6,color:'#fff',weight:2,fillColor:'#4ade80',fillOpacity:0.9}).addTo(layerGroup);
@@ -378,7 +389,7 @@ if ('serviceWorker' in navigator) {
 
   function colorForSpeed(v_mps){
     const pal=PALETTES[paletteKey];
-    const v_mph = mphFromMps(v_mps);
+    const v_mph = mph(v_mps);
     for(let i=0;i<SPEED_BINS_MPH.length;i++){ if(v_mph < SPEED_BINS_MPH[i]) return pal[i]; }
     return pal.at(-1);
   }
@@ -417,22 +428,37 @@ if ('serviceWorker' in navigator) {
 
     if (!last) {
       last = { lat: raw.lat, lon: raw.lon, t: raw.t };
+      lastDrawn = last;
       lastAcc = raw.acc;
       const vMed = median3Push(vRaw);
-      speedEl.textContent = mphFromMps(vMed).toFixed(1);
+      speedEl.textContent = mph(vMed).toFixed(1);
       points.push({ t, lat: raw.lat, lon: raw.lon, speed: vMed, acc: raw.acc });
       return;
     }
 
-    const d  = hav(last, raw);
+    const dFromLast  = hav(last, raw);
+    const dFromDrawn = hav(lastDrawn, raw);
     const dt = Math.max((t - last.t) / 1000, 0.001);
-    let vv   = (Number.isFinite(speed) && speed >= 0) ? speed : d/dt;
+    let vv   = (Number.isFinite(speed) && speed >= 0) ? speed : dFromLast/dt;
 
     // 1) Accuracy-aware jitter guard
     const jitter = Math.max(MIN_MOVE_M, ACC_JITTER_FACTOR * ((lastAcc ?? 30) + raw.acc));
-    if (d < jitter) {
+    if (dFromLast < jitter) {
+      // accept fix, update speed label, but don't draw yet
       const vMed = median3Push(Math.max(vv,0));
-      speedEl.textContent = mphFromMps(vMed).toFixed(1);
+      speedEl.textContent = mph(vMed).toFixed(1);
+
+      accumSmall += dFromLast;
+      if (accumSmall >= DRAW_AFTER_ACCUM_M) {
+        // draw from lastDrawn -> current (smoothed)
+        const sm = median3Coord(raw.lat, raw.lon);
+        layerGroup.addLayer(L.polyline([[lastDrawn.lat,lastDrawn.lon],[sm.lat,sm.lon]],{
+          color: colorForSpeed(vMed), weight:6, opacity:.95
+        }));
+        lastDrawn = { lat: raw.lat, lon: raw.lon, t: raw.t };
+        accumSmall = 0;
+      }
+
       last = { lat: raw.lat, lon: raw.lon, t: raw.t };
       lastAcc = raw.acc;
       points.push({ t, lat: raw.lat, lon: raw.lon, speed: vMed, acc: raw.acc });
@@ -441,8 +467,8 @@ if ('serviceWorker' in navigator) {
     }
 
     // 2) Obvious spikes
-    if (d > MAX_SEGMENT_M || vv > MAX_SPEED_MPS) {
-      pending = { pt: raw, t, d, v: vv };
+    if (dFromLast > MAX_SEGMENT_M || vv > MAX_SPEED_MPS) {
+      pending = { pt: raw, t, d: dFromLast, v: vv };
       return;
     }
 
@@ -457,7 +483,6 @@ if ('serviceWorker' in navigator) {
         return;
       } else if (age > PENDING_MAX_DT_MS) {
         pending = null;
-        // continue to process current raw normally
       }
     }
 
@@ -468,26 +493,28 @@ if ('serviceWorker' in navigator) {
   function acceptAndDraw(raw, vv){
     if (!isFinite(vv) || vv < 0) vv = 0;
     const vMed = median3Push(vv);
-    speedEl.textContent = mphFromMps(vMed).toFixed(1);
+    speedEl.textContent = mph(vMed).toFixed(1);
 
     // Plot with tiny coord median (visual only)
     const sm = median3Coord(raw.lat, raw.lon);
 
-    layerGroup.addLayer(L.polyline([[last.lat,last.lon],[sm.lat,sm.lon]],{
+    layerGroup.addLayer(L.polyline([[lastDrawn.lat,lastDrawn.lon],[sm.lat,sm.lon]],{
       color: colorForSpeed(vMed), weight:6, opacity:.95
     }));
 
     last = { lat: raw.lat, lon: raw.lon, t: raw.t };
+    lastDrawn = last;
     lastAcc = raw.acc;
+    accumSmall = 0;
     points.push({ t: raw.t, lat: raw.lat, lon: raw.lon, speed: vMed, acc: raw.acc });
   }
 
-  function onErr(e){ console.error(e); showToast(e?.message||'Location error'); }
-  function showToast(t,ms=2000){ const el=document.getElementById('toast'); el.textContent=t; el.style.display='block'; setTimeout(()=>el.style.display='none',ms); }
+  function onErr(e){ console.error(e); toast(e?.message||'Location error'); }
+  function toast(t,ms=2000){ const el=document.getElementById('toast'); el.textContent=t; el.style.display='block'; setTimeout(()=>el.style.display='none',ms); }
 
   /* controls */
   async function start(){
-    if(!navigator.geolocation) return showToast('Geolocation not supported');
+    if(!navigator.geolocation) return toast('Geolocation not supported');
     if(watchId!==null) return;
     setWatcher(true);
     running=true; startBtn.style.display='none'; stopBtn.style.display=''; runDot.style.display='inline-block';
@@ -496,9 +523,10 @@ if ('serviceWorker' in navigator) {
   function stop(){
     if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
     running=false; startBtn.style.display=''; stopBtn.style.display='none'; runDot.style.display='none';
-    stillSince=null; releaseWakeLock();
+    stillSince=null; accumSmall=0; pending=null;
+    releaseWakeLock();
   }
-  function reset(){ stop(); last=null; points=[]; layerGroup.clearLayers(); posMarker=null; accCircle=null; speedEl.textContent='0'; }
+  function reset(){ stop(); last=null; lastDrawn=null; points=[]; layerGroup.clearLayers(); posMarker=null; accCircle=null; speedEl.textContent='0'; }
 
   document.getElementById('startBtn').addEventListener('click',start);
   document.getElementById('stopBtn').addEventListener('click',stop);
