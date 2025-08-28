@@ -1,5 +1,8 @@
 // --- FASTA service worker (safe + update-friendly) ---
-const VERSION = 'fasta-v1.0.3';       // ⬅️ bump this on each release
+// sw.js (top of file)
+importScripts('./version.js');
+// Use FASTA_CACHE for your cache/version key:
+const VERSION = FASTA_CACHE; // e.g., 'fasta-v1.0.5'
 const STATIC_CACHE  = `static-${VERSION}`;
 const RUNTIME_TILES = 'tiles-runtime';
 
