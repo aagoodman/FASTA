@@ -36,7 +36,7 @@
       box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:pulse 2s infinite}
     @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}70%{box-shadow:0 0 0 10px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
 
-    /* Legend (narrow) */
+    /* Legend (compact) */
     #legend{
       position:fixed;bottom:16px;left:16px;background:rgba(17,17,17,.65);
       border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:8px 10px;
@@ -112,13 +112,11 @@
   <!-- Icon bar: Keep Awake + Export -->
   <div id="iconBar">
     <button id="awakeBtn" class="iconBtn" title="Keep screen awake (while tracking)">
-      <!-- cup -->
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 7h12v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7zm14 2h2.5a2.5 2.5 0 0 1 0 5H17V9zm0 2v2h2.5a1 1 0 0 0 0-2H17zM5 19h10v2H5zM8 3h2v2H8zm4 0h2v2h-2zM6 3h2v2H6z"/></svg>
     </button>
 
     <div style="position:relative">
       <button id="exportBtn" class="iconBtn" title="Download" aria-haspopup="true" aria-expanded="false">
-        <!-- download -->
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
           <path fill="currentColor" d="M5 20h14a1 1 0 0 0 1-1v-2h-2v1H6v-1H4v2a1 1 0 0 0 1 1zm6-17a1 1 0 0 1 1 1v8.6l2.3-2.3 1.4 1.4L12 16.4l-4.7-4.7 1.4-1.4L11 12.6V4a1 1 0 0 1 1-1z"/>
         </svg>
@@ -141,7 +139,7 @@
       <label><input type="checkbox" id="dontShow"> Don’t show again</label>
       <button id="dismissSplash" class="btn">Continue</button>
     </div>
-    <div id="appVersion" style="margin-top:10px;font-size:12px;opacity:.8;">Version 1.0.1</div>
+    <div id="appVersion" style="margin-top:10px;font-size:12px;opacity:.8;">Version 1.0.3</div>
     <div style="margin-top:8px;font-size:12px;">
       <a href="./privacy.md" style="color:#eef;text-decoration:underline;">Privacy</a> ·
       <a href="./terms.md" style="color:#eef;text-decoration:underline;">Terms</a>
@@ -189,12 +187,21 @@ if ('serviceWorker' in navigator) {
 (function(){
   /* ====== Config ====== */
   const SPEED_BINS_MPH = [2, 5, 15, 35, 55]; // legend & coloring bins (mph)
-  const MAX_ACCURACY_M = 60;   // ignore points with worse accuracy
-  const MIN_MOVE_M     = 3;    // ignore tiny jitter when nearly still
-  const MAX_SEGMENT_M  = 250;  // drop absurd long hops
-  const MAX_SPEED_MPS  = 25;   // ~56 mph
 
-  const APP_VERSION = '1.0.1';
+  // Filtering knobs
+  const MAX_ACCURACY_M   = 60;    // discard worse fixes
+  const MIN_MOVE_M       = 3;     // base jitter guard
+  const MAX_SEGMENT_M    = 250;   // absurd hop -> discard
+  const MAX_SPEED_MPS    = 25;    // ~56 mph cap
+
+  // Accuracy-aware jitter (distance threshold considering fix accuracy)
+  const ACC_JITTER_FACTOR = 0.6;  // fraction of (acc_prev + acc_curr)
+
+  // Two-hit confirmation for big jumps
+  const PENDING_MAX_DT_MS = 4000; // time window for confirmation
+  const PENDING_NEAR_M    = 35;   // corroboration distance
+
+  const APP_VERSION = '1.0.3';
 
   /* ====== Base maps ====== */
   const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap',crossOrigin:'anonymous'});
@@ -328,7 +335,7 @@ if ('serviceWorker' in navigator) {
     if (!PREFER_WAKE_LOCK) releaseWakeLock();
   });
 
-  /* ====== Tracking ====== */
+  /* ====== Tracking & filtering ====== */
   const startBtn=document.getElementById('startBtn'), stopBtn=document.getElementById('stopBtn'), resetBtn=document.getElementById('resetBtn');
   const satToggle=document.getElementById('satToggle'), speedEl=document.getElementById('speed'), runDot=document.getElementById('runDot');
   const layerGroup=L.layerGroup().addTo(map);
@@ -358,9 +365,20 @@ if ('serviceWorker' in navigator) {
     return arr[Math.floor(arr.length/2)];
   }
 
+  /* tiny coord smoother for plotting only */
+  const coordBuf=[];
+  function median3Coord(lat, lon){
+    coordBuf.push({lat, lon});
+    if(coordBuf.length>3) coordBuf.shift();
+    const lats = coordBuf.map(p=>p.lat).sort((a,b)=>a-b);
+    const lons = coordBuf.map(p=>p.lon).sort((a,b)=>a-b);
+    const i = Math.floor((coordBuf.length-1)/2);
+    return { lat: lats[i], lon: lons[i] };
+  }
+
   function colorForSpeed(v_mps){
-    const v_mph = mphFromMps(v_mps);
     const pal=PALETTES[paletteKey];
+    const v_mph = mphFromMps(v_mps);
     for(let i=0;i<SPEED_BINS_MPH.length;i++){ if(v_mph < SPEED_BINS_MPH[i]) return pal[i]; }
     return pal.at(-1);
   }
@@ -375,61 +393,93 @@ if ('serviceWorker' in navigator) {
     });
   }
 
+  let pending = null;  // candidate jump awaiting confirmation
+  let lastAcc = null;  // accuracy of last accepted fix
+
   function onPos(pos){
     const { latitude, longitude, speed, accuracy } = pos.coords;
     if (accuracy != null && accuracy > MAX_ACCURACY_M) return;
 
-    const t=pos.timestamp;
-    const curr={lat:latitude,lon:longitude,t};
-    placePosition(latitude,longitude,accuracy);
+    const t = pos.timestamp;
+    const raw = { lat: latitude, lon: longitude, t, acc: accuracy ?? 30 };
 
-    const vRaw = (Number.isFinite(speed) && speed >= 0) ? speed : 0;
+    placePosition(latitude, longitude, accuracy);
 
     // Smart accuracy switch
+    const vRaw = (Number.isFinite(speed) && speed >= 0) ? speed : 0;
     if (vRaw < STILL_SPEED) {
       if (stillSince==null) stillSince = t;
-      if (hiAcc && t - stillSince > STILL_TIME) { setWatcher(false); }
+      if (hiAcc && t - stillSince > STILL_TIME) setWatcher(false);
     } else {
       stillSince = null;
-      if (!hiAcc) { setWatcher(true); }
+      if (!hiAcc) setWatcher(true);
     }
 
-    if(!last){
+    if (!last) {
+      last = { lat: raw.lat, lon: raw.lon, t: raw.t };
+      lastAcc = raw.acc;
       const vMed = median3Push(vRaw);
       speedEl.textContent = mphFromMps(vMed).toFixed(1);
-      points.push({t,lat:latitude,lon:longitude,speed:vMed,acc:accuracy});
-      last=curr;
+      points.push({ t, lat: raw.lat, lon: raw.lon, speed: vMed, acc: raw.acc });
       return;
     }
 
-    const d  = hav(last,curr);
-    const dt = Math.max((t-last.t)/1000, 0.001);
+    const d  = hav(last, raw);
+    const dt = Math.max((t - last.t) / 1000, 0.001);
     let vv   = (Number.isFinite(speed) && speed >= 0) ? speed : d/dt;
 
-    // jitter guard
-    if (d < MIN_MOVE_M) {
+    // 1) Accuracy-aware jitter guard
+    const jitter = Math.max(MIN_MOVE_M, ACC_JITTER_FACTOR * ((lastAcc ?? 30) + raw.acc));
+    if (d < jitter) {
       const vMed = median3Push(Math.max(vv,0));
       speedEl.textContent = mphFromMps(vMed).toFixed(1);
-      last = curr;
-      points.push({t,lat:latitude,lon:longitude,speed:vMed,acc:accuracy});
+      last = { lat: raw.lat, lon: raw.lon, t: raw.t };
+      lastAcc = raw.acc;
+      points.push({ t, lat: raw.lat, lon: raw.lon, speed: vMed, acc: raw.acc });
+      pending = null;
       return;
     }
 
-    // spike guards
+    // 2) Obvious spikes
     if (d > MAX_SEGMENT_M || vv > MAX_SPEED_MPS) {
-      return; // drop sample
+      pending = { pt: raw, t, d, v: vv };
+      return;
     }
 
+    // 3) Two-hit confirmation
+    if (pending) {
+      const age = t - pending.t;
+      const d2  = hav(pending.pt, raw);
+      if (age <= PENDING_MAX_DT_MS && d2 <= PENDING_NEAR_M) {
+        acceptAndDraw(pending.pt, pending.v);
+        pending = null;
+        acceptAndDraw(raw, vv);
+        return;
+      } else if (age > PENDING_MAX_DT_MS) {
+        pending = null;
+        // continue to process current raw normally
+      }
+    }
+
+    // Normal acceptance
+    acceptAndDraw(raw, vv);
+  }
+
+  function acceptAndDraw(raw, vv){
     if (!isFinite(vv) || vv < 0) vv = 0;
     const vMed = median3Push(vv);
-
     speedEl.textContent = mphFromMps(vMed).toFixed(1);
-    layerGroup.addLayer(L.polyline([[last.lat,last.lon],[curr.lat,curr.lon]],{
+
+    // Plot with tiny coord median (visual only)
+    const sm = median3Coord(raw.lat, raw.lon);
+
+    layerGroup.addLayer(L.polyline([[last.lat,last.lon],[sm.lat,sm.lon]],{
       color: colorForSpeed(vMed), weight:6, opacity:.95
     }));
 
-    last=curr;
-    points.push({t,lat:latitude,lon:longitude,speed:vMed,acc:accuracy});
+    last = { lat: raw.lat, lon: raw.lon, t: raw.t };
+    lastAcc = raw.acc;
+    points.push({ t: raw.t, lat: raw.lat, lon: raw.lon, speed: vMed, acc: raw.acc });
   }
 
   function onErr(e){ console.error(e); showToast(e?.message||'Location error'); }
