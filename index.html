@@ -1,534 +1,257 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#1A5EB2" />
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <title>FASTA</title>
-
-  <link rel="manifest" href="./manifest.json">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="icon" href="./icons/icon-192.png" sizes="192x192">
-
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>Speed-Color Map (Prototype)</title>
+  <meta name="theme-color" content="#111111">
+  <link rel="manifest" href="data:application/manifest+json,{&quot;name&quot;:&quot;Speed-Color Map&quot;,&quot;short_name&quot;:&quot;SpeedMap&quot;,&quot;start_url&quot;:&quot;.&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;#111111&quot;,&quot;theme_color&quot;:&quot;#111111&quot;}">
+  <link rel="preconnect" href="https://unpkg.com">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-
   <style>
-    :root { --bg:#1A5EB2; --fg:#f5f5f7; --muted:#a3a3a3; }
-    html,body,#app{height:100%;margin:0;background:var(--bg);color:var(--fg);
-      font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    #map{position:absolute;inset:0}
-
-    /* Top bar */
-    #ui-top{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top) + 6px);
-      display:flex;gap:8px;padding:8px 12px;z-index:2000;align-items:center;flex-wrap:wrap}
-    .pill{display:inline-flex;align-items:center;gap:8px;border-radius:999px;
-      background:rgba(17,17,17,.68);padding:8px 12px;backdrop-filter:blur(8px);
-      border:1px solid rgba(255,255,255,.1)}
-    .btn{appearance:none;border:1px solid rgba(255,255,255,.15);background:#222;color:var(--fg);
-      border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer}
-    .btn.primary{background:#14532d;border-color:#1f7a47}
-    .btn.warn{background:#7a1f1f;border-color:#a33}
-    .metric{font-variant-numeric:tabular-nums}
-    .muted{color:var(--muted)}
-    .dot{width:10px;height:10px;border-radius:999px;background:#22c55e;display:none;
-      box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:pulse 2s infinite}
-    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}70%{box-shadow:0 0 0 10px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
-
-    /* Legend */
-    #legend{
-      position:fixed;bottom:16px;left:16px;background:rgba(17,17,17,.65);
-      border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:8px 10px;
-      backdrop-filter:blur(8px);z-index:1500;min-width:150px;max-width:180px
-    }
-    #legend .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
-    #legend .title{font-weight:600;line-height:1.2}
-    #legend .row{display:flex;align-items:center;gap:8px;margin:.25rem 0}
-    .swatch{width:24px;height:10px;border-radius:4px}
-    #paletteBtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;
-      background:#fff;border:1px solid #d9d9df;border-radius:8px;cursor:pointer}
-    #paletteBtn svg{width:20px;height:20px}
-
-    /* Icon bar (export + keep-awake) */
-    #iconBar{position:fixed;top:calc(env(safe-area-inset-top) + 10px);right:12px;z-index:2200;display:flex;gap:8px}
-    .iconBtn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
-      background:#fff;border:1px solid rgba(0,0,0,.25);border-radius:6px;cursor:pointer;color:#222}
-    .iconBtn.active{background:#ffe9b3;border-color:#d6b24a}
-    .iconBtn:hover{background:#f5f5f5}
-    #exportMenu{position:absolute;top:36px;right:0;background:#151515;border:1px solid #333;
-      border-radius:10px;padding:6px;display:none;min-width:200px}
-    #exportMenu button{width:100%;text-align:left;border:none;background:transparent;color:var(--fg);
-      padding:8px 10px;border-radius:8px;cursor:pointer}
-    #exportMenu button:hover{background:#222}
-
-    /* Zoom bottom-right; Locate stacked above */
-    .leaflet-control-zoom{margin:0 10px 10px 0}
-    .leaflet-bottom.leaflet-right .leaflet-control-locate{margin:0 10px 56px 0}
-    .leaflet-control-locate.leaflet-bar a{
-      width:30px;height:30px;background:#fff;border:1px solid rgba(0,0,0,.25);
-      display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.25)
-    }
-    .leaflet-control-locate svg{width:16px;height:16px}
-
-    /* Palette modal */
-    #modalOverlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:2300}
-    #modal{position:absolute;left:50%;top:50%;transform:translate(-50%, -50%);background:#16161a;color:#fff;
-      border:1px solid #2a2a31;border-radius:14px;width:min(92vw,420px);padding:14px}
-    .palette-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;cursor:pointer}
-    .palette-row:hover{background:#1f1f25}
-    .swatches{display:flex;gap:4px;margin-left:auto}
-    .swatches span{width:20px;height:10px;border-radius:3px;display:inline-block}
-    .small{padding:6px 10px;border-radius:8px;border:1px solid #333;background:#202026;color:#fff;cursor:pointer}
-
-    /* Splash */
-    #splash{position:fixed;inset:0;z-index:3000;display:none;background:#1A5EB2;padding:16px;text-align:center;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:auto}
-    #splash img{max-width:90%;max-height:68%;height:auto;width:auto;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.3)}
-    #splash .controls{margin-top:14px;display:flex;flex-direction:column;gap:10px;align-items:center}
-
-    /* Toast */
-    #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#222;border:1px solid #333;
-      color:#fff;padding:10px 14px;border-radius:12px;display:none;z-index:2400}
+    :root { --bg: #0b0b0c; --fg: #f5f5f7; --muted:#a3a3a3; --btn:#222; --btnb:#2c2c2c; --accent:#4ade80; }
+    html,body,#app { height: 100%; margin:0; background: var(--bg); color:var(--fg); font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;}
+    #map { position: absolute; inset: 0; }
+    #ui { position: fixed; top: env(safe-area-inset-top); left: 0; right: 0; display: flex; gap: 8px; padding: 10px 12px; background: linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0)); z-index: 1000; align-items: center; flex-wrap: wrap; }
+    .pill { display:inline-flex; align-items:center; gap:8px; border-radius: 999px; background: rgba(17,17,17,.7); padding: 8px 12px; backdrop-filter: blur(8px); border:1px solid rgba(255,255,255,.08); }
+    .btn { appearance:none; border:1px solid #333; background:var(--btn); color:var(--fg); border-radius:999px; padding:8px 12px; font-weight:600; }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { background:#14532d; border-color:#1f7a47;}
+    .btn.warn { background:#7a1f1f; border-color:#a33; }
+    .metric { font-variant-numeric: tabular-nums; }
+    #legend { position: fixed; bottom: 16px; left: 16px; background: rgba(17,17,17,.7); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; backdrop-filter: blur(8px); z-index:1000;}
+    #legend .row { display:flex; align-items:center; gap:8px; margin:.25rem 0; }
+    .swatch { width:18px; height:8px; border-radius:4px; }
+    #toast { position: fixed; bottom: 18px; left:50%; transform: translateX(-50%); background:#222; border:1px solid #333; color:#fff; padding:10px 14px; border-radius:12px; display:none; z-index:2000; }
   </style>
 </head>
 <body>
 <div id="app">
   <div id="map"></div>
-
-  <!-- Top UI -->
-  <div id="ui-top">
-    <div class="pill" id="controls">
+  <div id="ui">
+    <div class="pill">
       <button id="startBtn" class="btn primary">Start</button>
-      <button id="stopBtn" class="btn" style="display:none;">Stop</button>
+      <button id="stopBtn" class="btn">Stop</button>
       <button id="resetBtn" class="btn warn">Reset</button>
-      <div id="runDot" class="dot" title="Tracking running"></div>
+      <button id="exportCsvBtn" class="btn">Export CSV</button>
+      <button id="exportGpxBtn" class="btn">Export GPX</button>
     </div>
-    <div class="pill"><span class="muted">Speed</span> <span id="speed" class="metric">0</span> <span class="muted">mph</span></div>
-    <div class="pill"><label style="display:inline-flex;align-items:center;gap:6px;">
-      <input type="checkbox" id="satToggle"> Satellite</label></div>
-  </div>
-
-  <!-- Icon bar: Keep Awake + Export -->
-  <div id="iconBar">
-    <button id="awakeBtn" class="iconBtn" title="Keep screen awake (while tracking)">
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 7h12v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7zm14 2h2.5a2.5 2.5 0 0 1 0 5H17V9zm0 2v2h2.5a1 1 0 0 0 0-2H17zM5 19h10v2H5zM8 3h2v2H8zm4 0h2v2h-2zM6 3h2v2H6z"/></svg>
-    </button>
-
-    <div style="position:relative">
-      <button id="exportBtn" class="iconBtn" title="Download" aria-haspopup="true" aria-expanded="false">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path fill="currentColor" d="M5 20h14a1 1 0 0 0 1-1v-2h-2v1H6v-1H4v2a1 1 0 0 0 1 1zm6-17a1 1 0 0 1 1 1v8.6l2.3-2.3 1.4 1.4L12 16.4l-4.7-4.7 1.4-1.4L11 12.6V4a1 1 0 0 1 1-1z"/>
-        </svg>
-      </button>
-      <div id="exportMenu" role="menu" aria-label="Export">
-        <button id="exportCsvBtn">Export CSV</button>
-        <button id="exportGpxBtn">Export GPX</button>
-        <button id="exportPngBtn">Export PNG (map)</button>
-      </div>
+    <div class="pill">
+      <span>Speed:</span>
+      <span id="speed" class="metric">—</span>
+      <span id="unit">m/s</span>
+    </div>
+    <div class="pill">
+      <label for="unitsSelect">Units</label>
+      <select id="unitsSelect" class="btn">
+        <option value="mps">m/s</option>
+        <option value="kmh">km/h</option>
+        <option value="mph">mph</option>
+        <option value="kn">kn</option>
+      </select>
     </div>
   </div>
-
-  <!-- Legend -->
-  <div id="legend"></div>
-
-  <!-- Splash -->
-  <div id="splash">
-    <img src="./icons/splash-1284x2778.png" alt="FASTA splash">
-    <div class="controls">
-      <label><input type="checkbox" id="dontShow"> Don’t show again</label>
-      <button id="dismissSplash" class="btn">Continue</button>
-    </div>
-    <div id="appVersion" style="margin-top:10px;font-size:12px;opacity:.8;"></div>
-    <div style="margin-top:8px;font-size:12px;">
-      <a href="./privacy.md" style="color:#eef;text-decoration:underline;">Privacy</a> ·
-      <a href="./terms.md" style="color:#eef;text-decoration:underline;">Terms</a>
-    </div>
+  <div id="legend">
+    <div><strong>Color scale</strong> (by speed)</div>
+    <div class="row"><span class="swatch" style="background:#3b82f6;"></span> <span class="metric">&lt; 2 m/s (walk)</span></div>
+    <div class="row"><span class="swatch" style="background:#10b981;"></span> <span class="metric">2–8 m/s (jog/bike)</span></div>
+    <div class="row"><span class="swatch" style="background:#f59e0b;"></span> <span class="metric">8–22 m/s (city drive)</span></div>
+    <div class="row"><span class="swatch" style="background:#ef4444;"></span> <span class="metric">&gt; 22 m/s (highway/train)</span></div>
   </div>
-
-  <!-- Palette modal -->
-  <div id="modalOverlay">
-    <div id="modal">
-      <h3>Choose color palette</h3>
-      <div id="paletteList"></div>
-      <div style="display:flex;justify-content:flex-end;margin-top:8px;">
-        <button id="closeModal" class="small">Close</button>
-      </div>
-    </div>
-  </div>
-
   <div id="toast"></div>
 </div>
 
-<!-- SW registration (toast on update) -->
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').then(reg => {
-    reg.addEventListener('updatefound', () => {
-      const nw = reg.installing;
-      nw?.addEventListener('statechange', () => {
-        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-          const t = document.getElementById('toast');
-          if (t) { t.textContent = 'FASTA updated — reload to apply.'; t.style.display='block';
-                   setTimeout(()=>t.style.display='none', 3000); }
-        }
-      });
-    });
-  }).catch(()=>{});
-}
-</script>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
-<script src="https://unpkg.com/nosleep.js@0.12.0/dist/NoSleep.min.js"></script>
-<script src="./version.js"></script>
-
 <script>
 (function(){
-  /* ====== Version on splash ====== */
-  const verEl = document.getElementById('appVersion');
-  if (verEl && typeof FASTA_RELEASE !== 'undefined') {
-    verEl.textContent = 'Version ' + FASTA_RELEASE;
+  const map = L.map('map', { zoomControl: false });
+  const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, attribution: '&copy; OpenStreetMap' });
+  tiles.addTo(map);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn  = document.getElementById('stopBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const exportCsvBtn = document.getElementById('exportCsvBtn');
+  const exportGpxBtn = document.getElementById('exportGpxBtn');
+  const speedEl  = document.getElementById('speed');
+  const unitEl   = document.getElementById('unit');
+  const unitsSel = document.getElementById('unitsSelect');
+  const toastEl  = document.getElementById('toast');
+
+  let watchId = null;
+  let last = null;
+  let points = []; 
+  let lastUpdateTs = 0;
+  const layerGroup = L.layerGroup().addTo(map);
+
+  function showToast(msg, ms=2000){
+    toastEl.textContent = msg;
+    toastEl.style.display = 'block';
+    setTimeout(()=> toastEl.style.display='none', ms);
   }
 
-  /* ====== Config ====== */
-  const SPEED_BINS_MPH = [2,5,15,35,55];
-
-  // Filtering knobs (looser to ensure drawing on short walks)
-  const MAX_ACCURACY_M   = 60;
-  const MIN_MOVE_M       = 1.0;         // base jitter guard
-  const MAX_SEGMENT_M    = 250;
-  const MAX_SPEED_MPS    = 25;
-
-  // Accuracy-aware jitter threshold: max(2m, 0.6 * (acc_prev + acc_curr))
-  const JITTER_SCALE     = 0.6;
-  const JITTER_FLOOR_M   = 2.0;
-
-  // Two-hit confirmation (kept but more permissive)
-  const PENDING_MAX_DT_MS = 5000;
-  const PENDING_NEAR_M    = 60;
-
-  // Accumulate tiny moves; draw once we exceed this
-  const DRAW_AFTER_ACCUM_M = 4;
-
-  /* ====== Basemaps ====== */
-  const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap',crossOrigin:'anonymous'});
-  const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles &copy; Esri',crossOrigin:'anonymous'});
-  const map=L.map('map',{zoomControl:false,layers:[osm]});
-  L.control.zoom({position:'bottomright'}).addTo(map);
-  map.setView([20,0],2);
-
-  /* Locate control */
-  const Locate=L.Control.extend({options:{position:'bottomright'},onAdd:function(){
-    const c=L.DomUtil.create('div','leaflet-control-locate leaflet-bar');
-    const a=L.DomUtil.create('a','',c); a.href="#"; a.title="Center on my location";
-    a.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
-      +'<circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/>'
-      +'<line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/>'
-      +'<line x1="19" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>';
-    L.DomEvent.on(a,'click',e=>{
-      L.DomEvent.stop(e);
-      if(navigator.geolocation){
-        navigator.geolocation.getCurrentPosition(
-          pos=>map.flyTo([pos.coords.latitude,pos.coords.longitude],16,{duration:0.6}),
-          ()=>{}, {enableHighAccuracy:true,timeout:10000}
-        );
-      }
-    });
-    return c;
-  }});
-  map.addControl(new Locate());
-
-  /* ====== Palettes & legend ====== */
-  const PALETTES={
-    coolwarm:['#4575b4','#91bfdb','#e0f3f8','#fee090','#fc8d59','#d73027'],
-    traffic:['#22c55e','#a3e635','#fde047','#f97316','#ef4444','#7f1d1d'],
-    viridis:['#440154','#31688e','#35b779','#90d743','#fde725','#ffffcc'],
-    magma:['#0d0887','#6a00a8','#b12a90','#e16462','#fca636','#f0f921'],
-    cividis:['#00224e','#26456e','#4a6c78','#7c977a','#b8c485','#ffffc1']
-  };
-  let paletteKey='coolwarm';
-
-  function fanSVG(pal){
-    const parts=pal.slice(0,5).map((c,i)=>`<rect x="9" y="3" rx="2" ry="2" width="8" height="14" fill="${c}" transform="rotate(${ -25+i*12 } 10 15) translate(${i} ${i*0.6})"/>`).join('');
-    return `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${parts}<circle cx="10" cy="16" r="2.2" fill="#111" stroke="${pal[4]}" stroke-width="0.6"/></svg>`;
+  function toRad(d){ return d*Math.PI/180; }
+  function haversine(a,b){
+    const R=6371000;
+    const dLat=toRad(b.lat-a.lat), dLon=toRad(b.lon-a.lon);
+    const lat1=toRad(a.lat), lat2=toRad(b.lat);
+    const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2);
+    return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2));
   }
-  function renderLegend(){
-    const pal=PALETTES[paletteKey];
-    let html=`<div class="head">
-      <div class="title">Color scale<br><span class="muted">(mph)</span></div>
-      <button id="paletteBtn" title="Change colors">${fanSVG(pal)}</button>
-    </div>`;
-    for(let i=0;i<pal.length;i++){
-      const range=(i===0)?`< ${SPEED_BINS_MPH[0]}`:(i===pal.length-1)?`> ${SPEED_BINS_MPH.at(-1)}`:`${SPEED_BINS_MPH[i-1]}–${SPEED_BINS_MPH[i]}`;
-      html+=`<div class="row"><span class="swatch" style="background:${pal[i]}"></span><span>${range}</span></div>`;
+
+  function colorForSpeed(v){
+    if (v < 2) return '#3b82f6';
+    if (v < 8) return '#10b981';
+    if (v < 22) return '#f59e0b';
+    return '#ef4444';
+  }
+
+  function formatSpeed(v, units){
+    if (v == null || !isFinite(v)) return '—';
+    switch(units){
+      case 'kmh': return (v*3.6).toFixed(1);
+      case 'mph': return (v*2.236936).toFixed(1);
+      case 'kn':  return (v*1.943844).toFixed(1);
+      default:    return v.toFixed(1);
     }
-    const el=document.getElementById('legend'); el.innerHTML=html;
-    el.querySelector('#paletteBtn').addEventListener('click',openPalette);
-  }
-  renderLegend();
-
-  const modalOverlay=document.getElementById('modalOverlay'), paletteList=document.getElementById('paletteList'), closeModal=document.getElementById('closeModal');
-  function openPalette(){
-    paletteList.innerHTML='';
-    Object.entries(PALETTES).forEach(([key,arr])=>{
-      const row=document.createElement('div'); row.className='palette-row';
-      row.innerHTML=`<span>${key}</span><div class="swatches">${arr.map(c=>`<span style="background:${c}"></span>`).join('')}</div>`;
-      row.addEventListener('click',()=>{ paletteKey=key; renderLegend(); });
-      paletteList.appendChild(row);
-    });
-    modalOverlay.style.display='block';
-  }
-  closeModal.addEventListener('click',()=>modalOverlay.style.display='none');
-  modalOverlay.addEventListener('click',e=>{ if(e.target===modalOverlay) modalOverlay.style.display='none'; });
-
-  /* ====== Export ====== */
-  const exportBtn=document.getElementById('exportBtn'), exportMenu=document.getElementById('exportMenu');
-  function hideMenu(){ exportMenu.style.display='none'; exportBtn.setAttribute('aria-expanded','false'); }
-  exportBtn.addEventListener('click',e=>{ e.stopPropagation(); exportMenu.style.display=(exportMenu.style.display==='block')?'none':'block'; exportBtn.setAttribute('aria-expanded', exportMenu.style.display==='block'); });
-  document.addEventListener('click', hideMenu);
-
-  function ts(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`; }
-  function download(name,content,type='text/plain'){ const b=new Blob([content],{type}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(u),0); }
-  function toCSV(rows){ const h=['time_iso','timestamp_ms','lat','lon','speed_mps','accuracy_m']; return [h.join(',')].concat(rows.map(p=>[new Date(p.t).toISOString(),p.t,p.lat,p.lon,(p.speed??''),(p.acc??'')].join(','))).join('\n'); }
-  function toGPX(rows){ const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="FASTA" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>FASTA ${ts()}</name><trkseg>\n${rows.map(p=>`<trkpt lat="${p.lat}" lon="${p.lon}"><time>${esc(new Date(p.t).toISOString())}</time>${Number.isFinite(p.speed)?`<extensions><speed>${p.speed.toFixed(2)}</speed></extensions>`:''}</trkpt>`).join('\n')}\n</trkseg></trk></gpx>`; }
-  document.getElementById('exportCsvBtn').addEventListener('click', ()=>{ hideMenu(); download(`FASTA_${ts()}.csv`, toCSV(points), 'text/csv'); });
-  document.getElementById('exportGpxBtn').addEventListener('click', ()=>{ hideMenu(); download(`FASTA_${ts()}.gpx`, toGPX(points), 'application/gpx+xml'); });
-  document.getElementById('exportPngBtn').addEventListener('click', ()=>{
-    hideMenu();
-    if (typeof window.leafletImage !== 'function') { return alert('Map export not available'); }
-    window.leafletImage(map, (err, canvas)=>{
-      if (err || !canvas) { console.error(err); return; }
-      canvas.toBlob(blob=>{
-        const url=URL.createObjectURL(blob);
-        const a=document.createElement('a'); a.href=url; a.download=`FASTA_${ts()}.png`; a.click();
-        setTimeout(()=>URL.revokeObjectURL(url),0);
-      });
-    });
-  });
-
-  /* ====== Keep Awake (with iOS fallback) ====== */
-  const WAKE_KEY='fasta_wake_pref';
-  let PREFER_WAKE_LOCK = localStorage.getItem(WAKE_KEY) === '1';
-  const awakeBtn=document.getElementById('awakeBtn');
-  let wakeLock=null, noSleep=null;
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-  function reflectAwake(){ awakeBtn.classList.toggle('active', PREFER_WAKE_LOCK); }
-  reflectAwake();
-
-  async function lockScreen(){
-    try{
-      if(!isIOS && 'wakeLock' in navigator){
-        wakeLock = await navigator.wakeLock.request('screen');
-        document.addEventListener('visibilitychange', async ()=>{
-          if(document.visibilityState==='visible' && !wakeLock && PREFER_WAKE_LOCK){
-            try{ wakeLock=await navigator.wakeLock.request('screen'); }catch{}
-          }else if(document.visibilityState!=='visible'){ try{ wakeLock?.release(); }catch{} wakeLock=null; }
-        });
-      }else{
-        if(!noSleep) noSleep = new NoSleep();
-        try{ await noSleep.enable(); }catch{}
-      }
-    }catch{}
-  }
-  function releaseWakeLock(){ try{ wakeLock?.release(); }catch{} wakeLock=null; try{ noSleep?.disable(); }catch{} }
-
-  awakeBtn.addEventListener('click', ()=>{
-    PREFER_WAKE_LOCK = !PREFER_WAKE_LOCK;
-    localStorage.setItem(WAKE_KEY, PREFER_WAKE_LOCK ? '1' : '0');
-    reflectAwake();
-    toast(PREFER_WAKE_LOCK ? 'Keep-awake ON (while tracking)' : 'Keep-awake OFF');
-    if (!PREFER_WAKE_LOCK) releaseWakeLock();
-  });
-
-  /* ====== Tracking & filtering ====== */
-  const startBtn=document.getElementById('startBtn'), stopBtn=document.getElementById('stopBtn'), resetBtn=document.getElementById('resetBtn');
-  const satToggle=document.getElementById('satToggle'), speedEl=document.getElementById('speed'), runDot=document.getElementById('runDot');
-  const layerGroup=L.layerGroup().addTo(map);
-  let posMarker=null, accCircle=null;
-
-  let running=false, watchId=null, last=null, lastDrawn=null, points=[];
-  let hiAcc=true, stillSince=null;
-  const STILL_SPEED=0.5, STILL_TIME=20000; // m/s and ms
-
-  let accumSmall = 0;
-
-  const R=6371000,toR=Math.PI/180;
-  function hav(a,b){ const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR, lat1=a.lat*toR, lat2=b.lat*toR;
-    const s1=Math.sin(dLat/2), s2=Math.sin(dLon/2); return 2*R*Math.asin(Math.sqrt(s1*s1 + Math.cos(lat1)*Math.cos(lat2)*s2*s2)); }
-  const mph=v=>v*2.23693629;
-
-  function placePosition(lat,lon,acc){
-    if(!posMarker){ posMarker=L.circleMarker([lat,lon],{radius:6,color:'#fff',weight:2,fillColor:'#4ade80',fillOpacity:0.9}).addTo(layerGroup);
-      accCircle=L.circle([lat,lon],{radius:acc??15,color:'#999',weight:1,opacity:0.5,fillOpacity:0.05}).addTo(layerGroup);
-    } else { posMarker.setLatLng([lat,lon]); accCircle.setLatLng([lat,lon]).setRadius(acc??15); }
   }
 
-  /* median-of-3 speed (m/s) */
-  const speedBuf=[];
-  function med3(v){ speedBuf.push(v); if(speedBuf.length>3) speedBuf.shift(); const a=[...speedBuf].sort((x,y)=>x-y); return a[Math.floor(a.length/2)]; }
-  /* tiny coord median for plotting only */
-  const coordBuf=[]; function med3Coord(lat,lon){ coordBuf.push({lat,lon}); if(coordBuf.length>3) coordBuf.shift();
-    const lats=coordBuf.map(p=>p.lat).sort((a,b)=>a-b), lons=coordBuf.map(p=>p.lon).sort((a,b)=>a-b); const i=Math.floor((coordBuf.length-1)/2); return {lat:lats[i],lon:lons[i]}; }
+  function start(){
+    if (!navigator.geolocation) { showToast('Geolocation not supported'); return; }
+    if (watchId !== null) return;
 
-  function colorForSpeed(v_mps){
-    const pal=PALETTES[paletteKey]; const v_mph=mph(v_mps);
-    for(let i=0;i<SPEED_BINS_MPH.length;i++){ if(v_mph < SPEED_BINS_MPH[i]) return pal[i]; }
-    return pal.at(-1);
-  }
-
-  function setWatcher(high){
-    if (watchId!==null) { navigator.geolocation.clearWatch(watchId); watchId=null; }
-    hiAcc = !!high;
     watchId = navigator.geolocation.watchPosition(onPos, onErr, {
-      enableHighAccuracy: hiAcc,
-      maximumAge: hiAcc ? 0 : 10000,
-      timeout: hiAcc ? 15000 : 20000
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 15000
     });
+    lastUpdateTs = Date.now();
+    showToast('Tracking started');
   }
 
-  let pending=null, lastAcc=null;
+  function stop(){
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      showToast('Tracking stopped');
+    }
+  }
+
+  function reset(){
+    stop();
+    last = null;
+    points = [];
+    layerGroup.clearLayers();
+    speedEl.textContent = '—';
+  }
 
   function onPos(pos){
     const { latitude, longitude, speed, accuracy } = pos.coords;
-    if (accuracy != null && accuracy > MAX_ACCURACY_M) return;
-
     const t = pos.timestamp;
-    const raw = { lat: latitude, lon: longitude, t, acc: accuracy ?? 30 };
+    lastUpdateTs = Date.now();
 
-    placePosition(latitude, longitude, accuracy);
-
-    // Smart accuracy switch
-    const vRaw = (Number.isFinite(speed) && speed >= 0) ? speed : 0;
-    if (vRaw < STILL_SPEED) { if (stillSince==null) stillSince=t; if (hiAcc && t-stillSince>STILL_TIME) setWatcher(false); }
-    else { stillSince=null; if (!hiAcc) setWatcher(true); }
-
+    const curr = {lat: latitude, lon: longitude, t};
     if (!last) {
-      last = { lat: raw.lat, lon: raw.lon, t: raw.t };
-      lastDrawn = last;
-      lastAcc = raw.acc;
-      const vMed = med3(vRaw);
-      speedEl.textContent = mph(vMed).toFixed(1);
-      points.push({ t, lat: raw.lat, lon: raw.lon, speed: vMed, acc: raw.acc });
+      map.setView([latitude, longitude], 16);
+      last = curr;
+      points.push({t, lat: latitude, lon: longitude, speed: Math.max(speed??-1, -1), acc: accuracy});
       return;
     }
+    let v = (speed!=null && speed>=0) ? speed : haversine(last, curr) / ((t - last.t)/1000);
+    if (!isFinite(v) || v < 0) v = 0;
 
-    const dLast   = hav(last, raw);
-    const dDrawn  = hav(lastDrawn, raw);
-    const dt      = Math.max((t - last.t) / 1000, 0.001);
-    let vv        = (Number.isFinite(speed) && speed >= 0) ? speed : dLast/dt;
+    speedEl.textContent = formatSpeed(v, unitsSel.value);
+    unitEl.textContent  = unitsSel.options[unitsSel.selectedIndex].text;
 
-    // Accuracy-aware jitter threshold (loose)
-    const jitter = Math.max(JITTER_FLOOR_M, JITTER_SCALE * ((lastAcc ?? 30) + raw.acc));
+    const seg = L.polyline([[last.lat,last.lon],[curr.lat,curr.lon]], {color: colorForSpeed(v), weight: 6, opacity: 0.95});
+    layerGroup.addLayer(seg);
+    last = curr;
+    points.push({t, lat: latitude, lon: longitude, speed: v, acc: accuracy});
+  }
 
-    // If move is small, accept but defer drawing; accumulate and draw when enough distance builds up
-    if (dLast < jitter) {
-      const vMed = med3(Math.max(vv,0));
-      speedEl.textContent = mph(vMed).toFixed(1);
-
-      accumSmall += dLast;
-      if (accumSmall >= DRAW_AFTER_ACCUM_M) {
-        const sm = med3Coord(raw.lat, raw.lon);
-        layerGroup.addLayer(L.polyline([[lastDrawn.lat,lastDrawn.lon],[sm.lat,sm.lon]],{
-          color: colorForSpeed(vMed), weight:6, opacity:.95
-        }));
-        lastDrawn = { lat: raw.lat, lon: raw.lon, t: raw.t };
-        accumSmall = 0;
-      }
-
-      last = { lat: raw.lat, lon: raw.lon, t: raw.t };
-      lastAcc = raw.acc;
-      points.push({ t, lat: raw.lat, lon: raw.lon, speed: vMed, acc: raw.acc });
-      pending = null;
-      return;
+  function onErr(err){
+    console.error(err);
+    if (err.code === 1) {
+      showToast('Location permission denied. Check Settings → Privacy → Location Services.');
+    } else if (err.code === 2) {
+      showToast('Position unavailable. Move near a window / clear sky.');
+    } else if (err.code === 3) {
+      showToast('Location timeout. Weak signal?');
+    } else {
+      showToast(err.message || 'Location error');
     }
+  }
 
-    // Obvious spikes -> stage as pending
-    if (dLast > MAX_SEGMENT_M || vv > MAX_SPEED_MPS) { pending = { pt: raw, t, d: dLast, v: vv }; return; }
+  function download(filename, content, type='text/plain'){
+    const blob = new Blob([content], {type});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+  }
 
-    // Two-hit confirmation (more permissive)
-    if (pending) {
-      const age = t - pending.t;
-      const d2  = hav(pending.pt, raw);
-      if (age <= PENDING_MAX_DT_MS && d2 <= PENDING_NEAR_M) {
-        acceptAndDraw(pending.pt, pending.v);
-        pending = null;
-        acceptAndDraw(raw, vv);
-        return;
-      } else if (age > PENDING_MAX_DT_MS) {
-        pending = null; // drop pending; proceed with current
-      }
+  function toCSV(rows){
+    const header = ['time_iso','timestamp_ms','lat','lon','speed_mps','accuracy_m'];
+    const lines = [header.join(',')];
+    for (const p of rows) {
+      lines.push([new Date(p.t).toISOString(), p.t, p.lat, p.lon, (p.speed ?? ''), (p.acc ?? '')].join(','));
     }
-
-    // Normal acceptance
-    acceptAndDraw(raw, vv);
+    return lines.join('\n');
   }
 
-  function acceptAndDraw(raw, vv){
-    if (!isFinite(vv) || vv < 0) vv = 0;
-    const vMed = med3(vv);
-    speedEl.textContent = mph(vMed).toFixed(1);
-
-    const sm = med3Coord(raw.lat, raw.lon);
-    layerGroup.addLayer(L.polyline([[lastDrawn.lat,lastDrawn.lon],[sm.lat,sm.lon]],{
-      color: colorForSpeed(vMed), weight:6, opacity:.95
-    }));
-
-    last = { lat: raw.lat, lon: raw.lon, t: raw.t };
-    lastDrawn = last;
-    lastAcc = raw.acc;
-    accumSmall = 0;
-    points.push({ t: raw.t, lat: raw.lat, lon: raw.lon, speed: vMed, acc: raw.acc });
+  function toGPX(rows){
+    const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const head = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Speed-Color Map" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
+  <trk><name>Speed-Color Track</name><trkseg>`;
+    const tail = `  </trkseg></trk></gpx>`;
+    const body = rows.map(p => `    <trkpt lat="${p.lat}" lon="${p.lon}">
+      <time>${esc(new Date(p.t).toISOString())}</time>
+      ${Number.isFinite(p.speed)?`<extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>${p.speed.toFixed(2)}</gpxtpx:speed></gpxtpx:TrackPointExtension></extensions>`:''}
+    </trkpt>`).join('\n');
+    return [head, body, tail].join('\n');
   }
 
-  function onErr(e){ console.error(e); toast(e?.message||'Location error'); }
-  function toast(t,ms=2000){ const el=document.getElementById('toast'); el.textContent=t; el.style.display='block'; setTimeout(()=>el.style.display='none',ms); }
+  startBtn.addEventListener('click', start);
+  stopBtn.addEventListener('click', stop);
+  resetBtn.addEventListener('click', reset);
+  exportCsvBtn.addEventListener('click', ()=> download('track.csv', toCSV(points), 'text/csv'));
+  exportGpxBtn.addEventListener('click', ()=> download('track.gpx', toGPX(points), 'application/gpx+xml'));
+  unitsSel.addEventListener('change', ()=>{});
 
-  /* controls */
-  async function start(){
-    if(!navigator.geolocation) return toast('Geolocation not supported');
-    if(watchId!==null) return;
-    setWatcher(true);
-    running=true; startBtn.style.display='none'; stopBtn.style.display=''; runDot.style.display='inline-block';
-    if (localStorage.getItem(WAKE_KEY)==='1') await lockScreen();
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({name:'geolocation'}).then(p => {
+      if (p.state === 'granted') start();
+    }).catch(()=>{});
   }
-  function stop(){
-    if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
-    running=false; startBtn.style.display=''; stopBtn.style.display='none'; runDot.style.display='none';
-    stillSince=null; accumSmall=0; pending=null;
-    releaseWakeLock();
-  }
-  function reset(){ stop(); last=null; lastDrawn=null; points=[]; layerGroup.clearLayers(); posMarker=null; accCircle=null; speedEl.textContent='0'; }
 
-  document.getElementById('startBtn').addEventListener('click',start);
-  document.getElementById('stopBtn').addEventListener('click',stop);
-  document.getElementById('resetBtn').addEventListener('click',reset);
+  // Stall watchdog: if no update in 15s, restart watch
+  setInterval(()=>{
+    if (watchId !== null && Date.now() - lastUpdateTs > 15000) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = navigator.geolocation.watchPosition(onPos, onErr, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000
+      });
+      lastUpdateTs = Date.now();
+      showToast('GPS reconnected');
+    }
+  }, 8000);
 
-  document.getElementById('satToggle').addEventListener('change', (e)=>{
-    if(e.target.checked){ if(map.hasLayer(osm)) map.removeLayer(osm); esri.addTo(map); }
-    else { if(map.hasLayer(esri)) map.removeLayer(esri); osm.addTo(map); }
+  document.addEventListener('visibilitychange', ()=>{
+    if (document.visibilityState === 'visible' && watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = navigator.geolocation.watchPosition(onPos, onErr, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000
+      });
+      lastUpdateTs = Date.now();
+      showToast('Resumed tracking');
+    }
   });
-
-  /* Splash + initial center */
-  const SPLASH_KEY='fasta_hide_splash';
-  const splash=document.getElementById('splash'), dismissSplash=document.getElementById('dismissSplash'), dontShow=document.getElementById('dontShow');
-  function centerOnce(){ if(!navigator.geolocation) return; navigator.geolocation.getCurrentPosition(
-    p=>{ map.setView([p.coords.latitude,p.coords.longitude],16); placePosition(p.coords.latitude,p.coords.longitude,p.coords.accuracy); },
-    ()=>{}, { enableHighAccuracy:true, timeout:8000 }); }
-  if (dismissSplash) dismissSplash.addEventListener('click', ()=>{
-    if (dontShow && dontShow.checked) localStorage.setItem(SPLASH_KEY,'1');
-    splash.style.display='none';
-    centerOnce();
-  });
-
-  /* URL actions */
-  const q=new URLSearchParams(location.search);
-  const qpPalette=q.get('palette'); if(qpPalette && PALETTES[qpPalette]){ paletteKey=qpPalette; renderLegend(); }
-  if(localStorage.getItem(SPLASH_KEY) !== '1'){ splash.style.display='flex'; } else { centerOnce(); }
-  if(q.get('open')==='export'){ window.addEventListener('load',()=>{ document.getElementById('exportMenu').style.display='block'; }); }
-  if(q.get('action')==='start'){ window.addEventListener('load',()=>{ start(); }); }
-
 })();
 </script>
 </body>
