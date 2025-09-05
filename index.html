@@ -194,9 +194,9 @@ if ('serviceWorker' in navigator) {
   /* ====== Config ====== */
   const SPEED_BINS_MPH = [2,5,15,35,55];
 
-  // Filtering knobs (looser to ensure drawing on short walks)
+  // Filtering knobs
   const MAX_ACCURACY_M   = 60;
-  const MIN_MOVE_M       = 1.0;         // base jitter guard
+  const MIN_MOVE_M       = 1.0;
   const MAX_SEGMENT_M    = 250;
   const MAX_SPEED_MPS    = 25;
 
@@ -204,11 +204,11 @@ if ('serviceWorker' in navigator) {
   const JITTER_SCALE     = 0.6;
   const JITTER_FLOOR_M   = 2.0;
 
-  // Two-hit confirmation (kept but more permissive)
+  // Two-hit confirmation
   const PENDING_MAX_DT_MS = 5000;
   const PENDING_NEAR_M    = 60;
 
-  // Accumulate tiny moves; draw once we exceed this
+  // Accumulate tiny moves before drawing
   const DRAW_AFTER_ACCUM_M = 4;
 
   /* ====== Basemaps ====== */
@@ -378,6 +378,7 @@ if ('serviceWorker' in navigator) {
     return pal.at(-1);
   }
 
+  // === Watcher creator (patched to stamp lastUpdateTs) ===
   function setWatcher(high){
     if (watchId!==null) { navigator.geolocation.clearWatch(watchId); watchId=null; }
     hiAcc = !!high;
@@ -386,12 +387,19 @@ if ('serviceWorker' in navigator) {
       maximumAge: hiAcc ? 0 : 10000,
       timeout: hiAcc ? 15000 : 20000
     });
+    lastUpdateTs = Date.now(); // <-- patch
   }
 
   let pending=null, lastAcc=null;
 
+  // --- GPS stall watchdog state (patch) ---
+  let lastUpdateTs = 0;
+  const WATCHDOG_IDLE_MS = 15000;
+
   function onPos(pos){
     const { latitude, longitude, speed, accuracy } = pos.coords;
+    lastUpdateTs = Date.now(); // <-- patch: mark fresh update
+
     if (accuracy != null && accuracy > MAX_ACCURACY_M) return;
 
     const t = pos.timestamp;
@@ -447,7 +455,7 @@ if ('serviceWorker' in navigator) {
     // Obvious spikes -> stage as pending
     if (dLast > MAX_SEGMENT_M || vv > MAX_SPEED_MPS) { pending = { pt: raw, t, d: dLast, v: vv }; return; }
 
-    // Two-hit confirmation (more permissive)
+    // Two-hit confirmation
     if (pending) {
       const age = t - pending.t;
       const d2  = hav(pending.pt, raw);
@@ -528,6 +536,43 @@ if ('serviceWorker' in navigator) {
   if(localStorage.getItem(SPLASH_KEY) !== '1'){ splash.style.display='flex'; } else { centerOnce(); }
   if(q.get('open')==='export'){ window.addEventListener('load',()=>{ document.getElementById('exportMenu').style.display='block'; }); }
   if(q.get('action')==='start'){ window.addEventListener('load',()=>{ start(); }); }
+
+  /* ====== Patches: watchdog + resume + optional auto-start ====== */
+
+  // Watchdog: if no GPS update for N seconds, restart the watch
+  setInterval(()=>{
+    if (watchId !== null && (Date.now() - lastUpdateTs) > WATCHDOG_IDLE_MS) {
+      try { navigator.geolocation.clearWatch(watchId); } catch {}
+      watchId = navigator.geolocation.watchPosition(onPos, onErr, {
+        enableHighAccuracy: hiAcc,
+        maximumAge: hiAcc ? 0 : 10000,
+        timeout: hiAcc ? 15000 : 20000
+      });
+      lastUpdateTs = Date.now();
+      toast('GPS reconnected');
+    }
+  }, 8000);
+
+  // Resume: if app/tab becomes visible again, nudge the watcher
+  document.addEventListener('visibilitychange', ()=>{
+    if (document.visibilityState === 'visible' && watchId !== null) {
+      try { navigator.geolocation.clearWatch(watchId); } catch {}
+      watchId = navigator.geolocation.watchPosition(onPos, onErr, {
+        enableHighAccuracy: hiAcc,
+        maximumAge: hiAcc ? 0 : 10000,
+        timeout: hiAcc ? 15000 : 20000
+      });
+      lastUpdateTs = Date.now();
+      toast('Resumed tracking');
+    }
+  });
+
+  // Optional: auto-start if permission is already granted
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: 'geolocation' })
+      .then(p => { if (p.state === 'granted') start(); })
+      .catch(() => {});
+  }
 
 })();
 </script>
